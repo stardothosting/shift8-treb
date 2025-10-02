@@ -1,0 +1,649 @@
+<?php
+/**
+ * Plugin Name: Shift8 TREB Real Estate Listings
+ * Plugin URI: https://github.com/stardothosting/shift8-treb
+ * Description: Integrates Toronto Real Estate Board (TREB) listings via AMPRE API, automatically importing property listings into WordPress. Replaces the Python script with native WordPress functionality.
+ * Version: 1.0.0
+ * Author: Shift8 Web
+ * Author URI: https://shift8web.ca
+ * Text Domain: shift8-treb
+ * Domain Path: /languages
+ * Requires at least: 5.0
+ * Tested up to: 6.8
+ * Requires PHP: 7.4
+ * License: GPLv3 or later
+ * License URI: https://www.gnu.org/licenses/gpl-3.0.html
+ */
+
+// Exit if accessed directly
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+// Plugin constants
+define('SHIFT8_TREB_VERSION', '1.0.0');
+define('SHIFT8_TREB_PLUGIN_FILE', __FILE__);
+define('SHIFT8_TREB_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('SHIFT8_TREB_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('SHIFT8_TREB_PLUGIN_BASENAME', plugin_basename(__FILE__));
+
+/**
+ * Sanitize sensitive data for logging
+ *
+ * Recursively sanitizes array data to prevent sensitive information
+ * like API tokens and passwords from appearing in logs.
+ *
+ * @since 1.0.0
+ * @param mixed $data The data to sanitize
+ * @return mixed Sanitized data with sensitive fields redacted
+ */
+function shift8_treb_sanitize_log_data($data) {
+    if (is_array($data)) {
+        $sanitized = array();
+        foreach ($data as $key => $value) {
+            $key_lower = strtolower($key);
+            if (in_array($key_lower, array('token', 'api_token', 'password', 'pass', 'pwd', 'authorization'), true)) {
+                $sanitized[$key] = '***REDACTED***';
+            } elseif (in_array($key_lower, array('username', 'user', 'login'), true)) {
+                $sanitized[$key] = strlen($value) > 2 ? substr($value, 0, 2) . '***' : '***';
+            } elseif (is_array($value)) {
+                $sanitized[$key] = shift8_treb_sanitize_log_data($value);
+            } else {
+                $sanitized[$key] = $value;
+            }
+        }
+        return $sanitized;
+    }
+    return $data;
+}
+
+/**
+ * Global debug logging function
+ *
+ * Checks if debug logging is enabled before logging. Automatically
+ * sanitizes sensitive data to prevent credential exposure.
+ *
+ * @since 1.0.0
+ * @param string $message The log message
+ * @param mixed  $data    Optional data to include in the log
+ */
+// Removed duplicate function - using the new logging system below
+
+/**
+ * Encrypt sensitive data for storage
+ *
+ * @since 1.0.0
+ * @param string $data The data to encrypt
+ * @return string The encrypted data
+ */
+function shift8_treb_encrypt_data($data) {
+    if (empty($data)) {
+        return '';
+    }
+    
+    // Use WordPress salts for encryption key
+    $key = wp_salt('auth');
+    $iv = openssl_random_pseudo_bytes(16);
+    $encrypted = openssl_encrypt($data, 'AES-256-CBC', $key, 0, $iv);
+    
+    return base64_encode($iv . $encrypted);
+}
+
+/**
+ * Decrypt sensitive data from storage
+ *
+ * @since 1.0.0
+ * @param string $encrypted_data The encrypted data
+ * @return string The decrypted data
+ */
+function shift8_treb_decrypt_data($encrypted_data) {
+    if (empty($encrypted_data)) {
+        return '';
+    }
+    
+    $key = wp_salt('auth');
+    $data = base64_decode($encrypted_data);
+    $iv = substr($data, 0, 16);
+    $encrypted = substr($data, 16);
+    
+    return openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
+}
+
+// Check for minimum PHP version
+if (version_compare(PHP_VERSION, '7.4', '<')) {
+    add_action('admin_notices', function() {
+        echo '<div class="notice notice-error"><p>';
+        echo esc_html__('Shift8 TREB Real Estate Listings requires PHP 7.4 or higher. Please upgrade PHP.', 'shift8-treb');
+        echo '</p></div>';
+    });
+    return;
+}
+
+/**
+ * Main plugin class
+ *
+ * Handles plugin initialization, AMPRE API integration,
+ * and WordPress post management for TREB listings.
+ *
+ * @since 1.0.0
+ */
+class Shift8_TREB {
+    
+    /**
+     * Plugin instance
+     *
+     * @since 1.0.0
+     * @var Shift8_TREB|null
+     */
+    private static $instance = null;
+    
+    /**
+     * Get plugin instance (Singleton pattern)
+     *
+     * @since 1.0.0
+     * @return Shift8_TREB
+     */
+    public static function get_instance() {
+        if (null === self::$instance) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+    
+    /**
+     * Constructor
+     *
+     * Sets up plugin hooks and initialization.
+     *
+     * @since 1.0.0
+     */
+    private function __construct() {
+        add_action('plugins_loaded', array($this, 'init'));
+        register_activation_hook(__FILE__, array($this, 'activate'));
+        register_deactivation_hook(__FILE__, array($this, 'deactivate'));
+        
+        // Note: No custom post types - we create regular posts like the Python script
+        
+        // Add custom cron schedules
+        add_filter('cron_schedules', array($this, 'add_custom_cron_schedules'));
+        
+        // Cron hooks for TREB data synchronization
+        add_action('shift8_treb_sync_listings', array($this, 'sync_listings_cron'));
+        
+        // Admin hooks - register settings on admin_init regardless of is_admin() check
+        add_action('admin_init', array($this, 'register_settings'));
+        
+        // Include WP-CLI commands if WP-CLI is available
+        if (defined('WP_CLI') && WP_CLI) {
+            require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-cli.php';
+        }
+    }
+    
+    /**
+     * Initialize plugin
+     *
+     * Loads textdomain and sets up integrations.
+     *
+     * @since 1.0.0
+     */
+    public function init() {
+        shift8_treb_debug_log('Plugin init() called');
+        
+        // Load text domain for translations
+        load_plugin_textdomain('shift8-treb', false, dirname(plugin_basename(__FILE__)) . '/languages');
+        
+        // Initialize admin functionality
+        if (is_admin()) {
+            $this->init_admin();
+        }
+        
+        // Schedule cron if not already scheduled
+        if (!wp_next_scheduled('shift8_treb_sync_listings')) {
+            $this->schedule_sync();
+        }
+    }
+    
+    /**
+     * Initialize admin functionality
+     *
+     * @since 1.0.0
+     */
+    public function init_admin() {
+        require_once SHIFT8_TREB_PLUGIN_DIR . 'admin/class-shift8-treb-admin.php';
+        new Shift8_TREB_Admin();
+    }
+    
+    /**
+     * Register plugin settings
+     *
+     * @since 1.0.0
+     */
+    public function register_settings() {
+        register_setting(
+            'shift8_treb_settings',
+            'shift8_treb_settings',
+            array(
+                'sanitize_callback' => array($this, 'sanitize_settings'),
+                'default' => array(
+                    'bearer_token' => '',
+                    'sync_frequency' => 'daily',
+                    'max_listings_per_query' => 100,
+                    'debug_enabled' => '0',
+                    'google_maps_api_key' => '',
+                    'listing_status_filter' => 'Active',
+                    'city_filter' => 'Toronto',
+                    'property_type_filter' => '',
+                    'min_price' => '0',
+                    'max_price' => '999999999',
+                    'listing_template' => 'Property Details:\n\nAddress: %ADDRESS%\nPrice: %PRICE%\nMLS: %MLS%\nBedrooms: %BEDROOMS%\nBathrooms: %BATHROOMS%\nSquare Feet: %SQFT%\n\nDescription:\n%DESCRIPTION%'
+                )
+            )
+        );
+    }
+    
+    /**
+     * Sanitize settings
+     *
+     * @since 1.0.0
+     * @param array $input Raw input data
+     * @return array Sanitized settings
+     */
+    public function sanitize_settings($input) {
+        $sanitized = array();
+        
+        // Sanitize Bearer Token
+        if (isset($input['bearer_token'])) {
+            $token = trim($input['bearer_token']);
+            if (!empty($token)) {
+                $sanitized['bearer_token'] = shift8_treb_encrypt_data($token);
+            } else {
+                // Keep existing token if new one is empty
+                $existing_settings = get_option('shift8_treb_settings', array());
+                $sanitized['bearer_token'] = isset($existing_settings['bearer_token']) ? $existing_settings['bearer_token'] : '';
+            }
+        }
+        
+        // Sanitize sync frequency with extended options
+        $allowed_frequencies = array('hourly', 'eight_hours', 'twelve_hours', 'daily', 'weekly', 'biweekly', 'monthly');
+        if (isset($input['sync_frequency']) && in_array($input['sync_frequency'], $allowed_frequencies, true)) {
+            $sanitized['sync_frequency'] = $input['sync_frequency'];
+        } else {
+            $sanitized['sync_frequency'] = 'daily';
+        }
+        
+        // Sanitize max listings per query
+        if (isset($input['max_listings_per_query'])) {
+            $max_listings = absint($input['max_listings_per_query']);
+            $sanitized['max_listings_per_query'] = max(1, min(1000, $max_listings)); // Between 1 and 1000
+        }
+        
+        // Sanitize debug setting
+        $sanitized['debug_enabled'] = isset($input['debug_enabled']) ? '1' : '0';
+        
+        // Sanitize Google Maps API key
+        if (isset($input['google_maps_api_key'])) {
+            $sanitized['google_maps_api_key'] = sanitize_text_field($input['google_maps_api_key']);
+        }
+        
+        // Sanitize listing filters
+        if (isset($input['listing_status_filter'])) {
+            $sanitized['listing_status_filter'] = sanitize_text_field($input['listing_status_filter']);
+        }
+        
+        if (isset($input['city_filter'])) {
+            $sanitized['city_filter'] = sanitize_text_field($input['city_filter']);
+        }
+        
+        if (isset($input['property_type_filter'])) {
+            $sanitized['property_type_filter'] = sanitize_text_field($input['property_type_filter']);
+        }
+        
+        if (isset($input['min_price'])) {
+            $sanitized['min_price'] = absint($input['min_price']);
+        }
+        
+        if (isset($input['max_price'])) {
+            $sanitized['max_price'] = absint($input['max_price']);
+        }
+        
+        if (isset($input['listing_template'])) {
+            $sanitized['listing_template'] = wp_kses_post($input['listing_template']);
+        }
+        
+        // Add success message
+        add_settings_error(
+            'shift8_treb_settings',
+            'settings_updated',
+            esc_html__('Settings saved successfully.', 'shift8-treb'),
+            'updated'
+        );
+        
+        return $sanitized;
+    }
+    
+    
+    /**
+     * Add custom cron schedules
+     *
+     * @since 1.0.0
+     * @param array $schedules Existing cron schedules
+     * @return array Modified cron schedules
+     */
+    public function add_custom_cron_schedules($schedules) {
+        // Every 8 hours
+        $schedules['every_8_hours'] = array(
+            'interval' => 8 * HOUR_IN_SECONDS,
+            'display'  => esc_html__('Every 8 Hours', 'shift8-treb')
+        );
+        
+        // Every 12 hours
+        $schedules['every_12_hours'] = array(
+            'interval' => 12 * HOUR_IN_SECONDS,
+            'display'  => esc_html__('Every 12 Hours', 'shift8-treb')
+        );
+        
+        // Bi-weekly (every 2 weeks)
+        $schedules['bi_weekly'] = array(
+            'interval' => 2 * 7 * DAY_IN_SECONDS,
+            'display'  => esc_html__('Bi-Weekly (Every 2 Weeks)', 'shift8-treb')
+        );
+        
+        // Monthly (30 days)
+        $schedules['monthly'] = array(
+            'interval' => 30 * DAY_IN_SECONDS,
+            'display'  => esc_html__('Monthly', 'shift8-treb')
+        );
+        
+        return $schedules;
+    }
+    
+    /**
+     * Schedule TREB data synchronization
+     *
+     * Replaces the Python cron job: 15 10 * * * (daily at 10:15 AM)
+     *
+     * @since 1.0.0
+     */
+    public function schedule_sync() {
+        $settings = get_option('shift8_treb_settings', array());
+        $sync_frequency = isset($settings['sync_frequency']) ? $settings['sync_frequency'] : 'daily';
+        
+        // Schedule the sync event
+        wp_schedule_event(time(), $sync_frequency, 'shift8_treb_sync_listings');
+        
+        shift8_treb_debug_log('TREB sync scheduled', array(
+            'frequency' => $sync_frequency,
+            'next_run' => wp_next_scheduled('shift8_treb_sync_listings')
+        ));
+    }
+    
+    /**
+     * Cron job handler for syncing TREB listings
+     *
+     * This replaces the Python script functionality
+     *
+     * @since 1.0.0
+     */
+    public function sync_listings_cron() {
+        shift8_treb_debug_log('=== TREB SYNC STARTED ===');
+        
+        try {
+            // Get plugin settings
+            $settings = get_option('shift8_treb_settings', array());
+            
+            if (empty($settings['ampre_api_token'])) {
+                throw new Exception('AMPRE API token not configured');
+            }
+            
+            // Initialize AMPRE service
+            require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-ampre-service.php';
+            $ampre_service = new Shift8_TREB_AMPRE_Service($settings);
+            
+            // Initialize post manager
+            require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-post-manager.php';
+            $post_manager = new Shift8_TREB_Post_Manager($settings);
+            
+            // Fetch listings from AMPRE API
+            $listings = $ampre_service->get_listings();
+            
+            if (empty($listings)) {
+                shift8_treb_debug_log('No listings returned from AMPRE API');
+                return;
+            }
+            
+            shift8_treb_debug_log('Fetched listings from AMPRE', array('count' => count($listings)));
+            
+            // Process each listing
+            $processed = 0;
+            $errors = 0;
+            
+            foreach ($listings as $listing) {
+                try {
+                    $result = $post_manager->process_listing($listing);
+                    if ($result) {
+                        $processed++;
+                    }
+                } catch (Exception $e) {
+                    $errors++;
+                    shift8_treb_debug_log('Error processing listing', array(
+                        'listing_key' => isset($listing['ListingKey']) ? $listing['ListingKey'] : 'unknown',
+                        'error' => $e->getMessage()
+                    ));
+                }
+            }
+            
+            shift8_treb_debug_log('=== TREB SYNC COMPLETED ===', array(
+                'total_listings' => count($listings),
+                'processed' => $processed,
+                'errors' => $errors
+            ));
+            
+        } catch (Exception $e) {
+            shift8_treb_debug_log('TREB sync failed', array(
+                'error' => $e->getMessage()
+            ));
+        }
+    }
+    
+    /**
+     * Plugin activation
+     *
+     * Sets up default options and performs initial setup.
+     *
+     * @since 1.0.0
+     */
+    public function activate() {
+        // Set default options if they don't exist
+        if (!get_option('shift8_treb_settings')) {
+            add_option('shift8_treb_settings', array(
+                'ampre_api_token' => '',
+                'sync_frequency' => 'daily',
+                'debug_enabled' => '0',
+                'google_maps_api_key' => '',
+                'listing_status_filter' => 'Active',
+                'city_filter' => 'Toronto',
+                'max_listings_per_sync' => 100
+            ));
+        }
+        
+        // Create uploads directory for logs if it doesn't exist
+        $upload_dir = wp_upload_dir();
+        if (!is_dir($upload_dir['basedir'])) {
+            wp_mkdir_p($upload_dir['basedir']);
+        }
+        
+        // No custom post types needed - we use regular WordPress posts like the Python script
+        
+        // Flush rewrite rules
+        flush_rewrite_rules();
+        
+        shift8_treb_debug_log('Plugin activated');
+    }
+    
+    /**
+     * Plugin deactivation
+     *
+     * Cleans up scheduled events and temporary data.
+     *
+     * @since 1.0.0
+     */
+    public function deactivate() {
+        // Clear scheduled events
+        wp_clear_scheduled_hook('shift8_treb_sync_listings');
+        
+        // Flush rewrite rules
+        flush_rewrite_rules();
+        
+        shift8_treb_debug_log('Plugin deactivated');
+    }
+}
+
+/**
+ * Debug logging function
+ *
+ * @since 1.0.0
+ * @param string $message Log message
+ * @param array $context Additional context data
+ * @param string $level Log level (info, warning, error)
+ */
+function shift8_treb_debug_log($message, $context = array(), $level = 'info') {
+    shift8_treb_log($message, $context, $level);
+}
+
+/**
+ * Main logging function
+ *
+ * @since 1.0.0
+ * @param string $message Log message
+ * @param array $context Additional context data
+ * @param string $level Log level (info, warning, error)
+ */
+function shift8_treb_log($message, $context = array(), $level = 'info') {
+    $settings = get_option('shift8_treb_settings', array());
+    
+    // Always log if debug is enabled OR if it's an error/warning
+    if (empty($settings['debug_enabled']) || $settings['debug_enabled'] !== '1') {
+        if (!in_array($level, array('error', 'warning'))) {
+            return;
+        }
+    }
+    
+    $timestamp = current_time('Y-m-d H:i:s');
+    $context_str = '';
+    
+    if (!empty($context)) {
+        $context_str = ' | Context: ' . wp_json_encode($context);
+    }
+    
+    $log_entry = sprintf('[%s] [%s] %s%s', $timestamp, strtoupper($level), $message, $context_str);
+    
+    // Write to WordPress debug log if available
+    if (defined('WP_DEBUG') && WP_DEBUG && defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('SHIFT8-TREB: ' . $log_entry);
+        }
+    }
+    
+    // Write to our custom log file
+    shift8_treb_write_log_file($log_entry);
+}
+
+/**
+ * Write to custom log file
+ *
+ * @since 1.0.0
+ * @param string $log_entry Formatted log entry
+ */
+function shift8_treb_write_log_file($log_entry) {
+    $upload_dir = wp_upload_dir();
+    $log_dir = $upload_dir['basedir'] . '/shift8-treb-logs';
+    
+    // Create log directory if it doesn't exist
+    if (!file_exists($log_dir)) {
+        wp_mkdir_p($log_dir);
+        
+        // Add .htaccess to protect log files
+        $htaccess_content = "Order deny,allow\nDeny from all\n";
+        file_put_contents($log_dir . '/.htaccess', $htaccess_content);
+    }
+    
+    $log_file = $log_dir . '/treb-sync.log';
+    
+    // Rotate log if it gets too large (5MB)
+    if (file_exists($log_file) && filesize($log_file) > 5 * 1024 * 1024) {
+        $backup_file = $log_dir . '/treb-sync-' . date('Y-m-d-H-i-s') . '.log';
+        rename($log_file, $backup_file);
+        
+        // Keep only last 5 backup files
+        $backup_files = glob($log_dir . '/treb-sync-*.log');
+        if (count($backup_files) > 5) {
+            usort($backup_files, function($a, $b) {
+                return filemtime($a) - filemtime($b);
+            });
+            
+            for ($i = 0; $i < count($backup_files) - 5; $i++) {
+                unlink($backup_files[$i]);
+            }
+        }
+    }
+    
+    // Write log entry
+    file_put_contents($log_file, $log_entry . "\n", FILE_APPEND | LOCK_EX);
+}
+
+/**
+ * Get recent log entries
+ *
+ * @since 1.0.0
+ * @param int $lines Number of lines to retrieve
+ * @return array Log entries
+ */
+function shift8_treb_get_logs($lines = 100) {
+    $upload_dir = wp_upload_dir();
+    $log_file = $upload_dir['basedir'] . '/shift8-treb-logs/treb-sync.log';
+    
+    if (!file_exists($log_file)) {
+        return array('No log file found. Enable debug mode and run a sync to generate logs.');
+    }
+    
+    $log_content = file_get_contents($log_file);
+    if (empty($log_content)) {
+        return array('Log file is empty.');
+    }
+    
+    $log_lines = explode("\n", trim($log_content));
+    
+    // Get last N lines
+    if (count($log_lines) > $lines) {
+        $log_lines = array_slice($log_lines, -$lines);
+    }
+    
+    return array_reverse($log_lines); // Most recent first
+}
+
+/**
+ * Clear log files
+ *
+ * @since 1.0.0
+ * @return bool Success
+ */
+function shift8_treb_clear_logs() {
+    $upload_dir = wp_upload_dir();
+    $log_dir = $upload_dir['basedir'] . '/shift8-treb-logs';
+    
+    if (!file_exists($log_dir)) {
+        return true;
+    }
+    
+    $log_files = glob($log_dir . '/*.log');
+    foreach ($log_files as $file) {
+        unlink($file);
+    }
+    
+    shift8_treb_log('Log files cleared by user', array(), 'info');
+    return true;
+}
+
+// Initialize plugin
+shift8_treb_debug_log('Plugin file loaded, initializing...');
+Shift8_TREB::get_instance();

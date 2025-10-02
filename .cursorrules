@@ -1,0 +1,369 @@
+{
+    "ignoreLinterErrors": [
+        "Undefined function add_action",
+        "Undefined function add_filter",
+        "Undefined function add_menu_page",
+        "Undefined function add_submenu_page",
+        "Undefined function wp_verify_nonce",
+        "Undefined function wp_send_json_success",
+        "Undefined function wp_send_json_error",
+        "Undefined function wp_localize_script",
+        "Undefined function wp_enqueue_script",
+        "Undefined function wp_enqueue_style",
+        "Undefined function wp_add_inline_style",
+        "Undefined function esc_html__",
+        "Undefined function esc_html",
+        "Undefined function esc_attr",
+        "Undefined function current_user_can",
+        "Undefined function get_option",
+        "Undefined function update_option",
+        "Undefined function add_option",
+        "Undefined function plugin_dir_path",
+        "Undefined function plugin_dir_url",
+        "Undefined function plugin_basename",
+        "Undefined function load_plugin_textdomain",
+        "Undefined function register_activation_hook",
+        "Undefined function register_deactivation_hook",
+        "Undefined function is_plugin_active",
+        "Undefined function admin_url",
+        "Undefined function wp_create_nonce",
+        "Undefined function current_time",
+        "Undefined function wp_clear_scheduled_hook",
+        "Undefined function wp_schedule_event",
+        "Undefined function wp_next_scheduled",
+        "Undefined function wp_remote_get",
+        "Undefined function wp_remote_request",
+        "Undefined function wp_remote_retrieve_response_code",
+        "Undefined function wp_remote_retrieve_body",
+        "Undefined function wp_insert_post",
+        "Undefined function wp_update_post",
+        "Undefined function get_posts",
+        "Undefined function wp_upload_dir",
+        "Undefined function wp_mkdir_p",
+        "Undefined function wp_delete_file",
+        "Undefined function wp_json_encode",
+        "Undefined function sanitize_text_field",
+        "Undefined function sanitize_email",
+        "Undefined function esc_url_raw",
+        "Undefined function wp_unslash",
+        "Undefined function wp_die",
+        "Undefined function check_admin_referer",
+        "Undefined function add_settings_error",
+        "Undefined function register_setting",
+        "Undefined function wp_salt",
+        "Undefined function wp_filesystem",
+        "Undefined constant WP_DEBUG",
+        "Undefined constant WP_DEBUG_LOG",
+        "Undefined constant ABSPATH",
+        "Undefined constant HOUR_IN_SECONDS",
+        "Undefined constant DAY_IN_SECONDS"
+    ],
+    "context": "WordPress plugin development - WordPress core functions and constants are always available",
+    "versionManagement": {
+        "description": "Automatically update CSS/JS version references when files are modified",
+        "trigger": "When modifying WordPress plugin CSS or JS files",
+        "actions": [
+            "Check for wp_enqueue_style() and wp_enqueue_script() calls that reference the modified file",
+            "Update the version parameter to use the plugin's version constant (e.g., SHIFT8_TREB_VERSION)",
+            "Replace hardcoded version numbers like '1.0.0' with centralized constants",
+            "For development, consider using PLUGIN_VERSION . '-' . time() for immediate cache busting",
+            "For production, use just the plugin version constant"
+        ],
+        "examples": {
+            "before": "wp_enqueue_script('admin-js', $url, array(), '1.0.0', true);",
+            "after": "wp_enqueue_script('admin-js', $url, array(), SHIFT8_TREB_VERSION, true);",
+            "development": "wp_enqueue_script('admin-js', $url, array(), SHIFT8_TREB_VERSION . '-' . time(), true);"
+        }
+    },
+    "trebSpecificRules": {
+        "description": "TREB/AMPRE API specific development guidelines",
+        "apiIntegration": {
+            "baseUrl": "https://query.ampre.ca/odata/",
+            "authentication": "Bearer JWT token in Authorization header",
+            "rateLimiting": "Implement proper rate limiting and caching to avoid API abuse",
+            "errorHandling": "Always handle API errors gracefully with proper logging",
+            "dataValidation": "Validate all API responses before processing"
+        },
+        "cronScheduling": {
+            "rule": "Use WordPress wp-cron system instead of system cron",
+            "frequency": "Default to hourly sync, allow admin configuration",
+            "errorRecovery": "Implement retry logic for failed API calls",
+            "logging": "Log all sync activities for debugging"
+        },
+        "postManagement": {
+            "rule": "Create regular WordPress posts (NOT custom post types) exactly like Python script",
+            "duplicateHandling": "Use MLS number as post tag to prevent duplicates",
+            "imageHandling": "Download images to wp-content/uploads/treb/{mlsnumber}/ and set featured image",
+            "postStructure": "Title: full address, Content: from template, Excerpt: formatted address/price/MLS",
+            "categories": "Use 'Listings' for own agent, 'OtherListings' for others",
+            "tags": "Use MLS number as post tag for duplicate detection"
+        },
+        "dataMapping": {
+            "rule": "Map AMPRE API fields to WordPress post structure",
+            "requiredFields": ["ListingKey", "UnparsedAddress", "ListPrice", "StandardStatus"],
+            "customFields": "Store all additional listing data as custom fields",
+            "taxonomies": "Use WordPress taxonomies for property types, locations, etc."
+        }
+    },
+    "wordpressPluginDirectoryCompliance": {
+        "description": "Ensure all code meets WordPress.org plugin directory automated checker requirements",
+        "securityRequirements": {
+            "outputEscaping": {
+                "rule": "ALL output must be escaped using appropriate WordPress functions",
+                "functions": ["esc_html()", "esc_attr()", "esc_url()", "esc_js()", "wp_kses()"],
+                "examples": {
+                    "exceptions": "throw new Exception('Error: ' . esc_html($message));",
+                    "variables": "echo esc_html($variable);",
+                    "attributes": "<input value=\"<?php echo esc_attr($value); ?>\" />",
+                    "urls": "<a href=\"<?php echo esc_url($link); ?>\">Link</a>"
+                },
+                "critical": "Exception messages MUST be escaped even if they seem safe"
+            },
+            "inputSanitization": {
+                "rule": "ALL $_POST, $_GET, $_REQUEST input must be sanitized at point of access",
+                "pattern": "isset($_POST['field']) ? sanitize_function(wp_unslash($_POST['field'])) : ''",
+                "functions": ["sanitize_text_field()", "sanitize_email()", "sanitize_user()", "esc_url_raw()"],
+                "examples": {
+                    "text": "isset($_POST['text']) ? sanitize_text_field(wp_unslash($_POST['text'])) : ''",
+                    "email": "isset($_POST['email']) ? sanitize_email(wp_unslash($_POST['email'])) : ''",
+                    "url": "isset($_POST['url']) ? esc_url_raw(wp_unslash($_POST['url'])) : ''"
+                },
+                "critical": "ALWAYS use wp_unslash() before sanitization, and isset() checks are mandatory"
+            },
+            "nonceVerification": {
+                "rule": "All form submissions must verify nonces BEFORE processing data",
+                "pattern": "wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'action_name')",
+                "critical": "Nonce verification must happen first, and nonce itself must be sanitized"
+            },
+            "fileOperations": {
+                "rule": "Use WordPress file functions instead of direct PHP file operations",
+                "replacements": {
+                    "unlink()": "wp_delete_file()",
+                    "file_get_contents()": "$wp_filesystem->get_contents()",
+                    "file_put_contents()": "$wp_filesystem->put_contents()",
+                    "fopen/fwrite/fclose": "WP_Filesystem API"
+                },
+                "setup": "Always initialize WP_Filesystem before use"
+            }
+        },
+        "developmentFunctions": {
+            "rule": "Remove or conditionally wrap development functions for production",
+            "functions": ["error_log()", "print_r()", "var_dump()", "var_export()"],
+            "solutions": {
+                "removal": "Delete development functions entirely",
+                "conditional": "Wrap in if (defined('WP_DEBUG') && WP_DEBUG) { ... }",
+                "replacement": "Use wp_json_encode() for logging instead of print_r()"
+            },
+            "examples": {
+                "before": "error_log('Debug message');",
+                "after": "if (defined('WP_DEBUG') && WP_DEBUG) { error_log('Debug message'); }"
+            }
+        },
+        "fileStructure": {
+            "rule": "Maintain proper WordPress plugin directory structure",
+            "requirements": {
+                "hiddenFiles": "NO hidden files (starting with .) allowed",
+                "languagesDirectory": "Must exist and contain non-hidden placeholder file",
+                "domainPath": "Header must point to existing directory",
+                "textDomain": "Must match plugin folder name or be explicitly approved"
+            },
+            "solutions": {
+                "languagesDirPlaceholder": "Create languages/readme.txt instead of .gitkeep",
+                "removeHiddenFiles": "Delete .gitignore, .gitkeep, .DS_Store, etc."
+            }
+        },
+        "headers": {
+            "rule": "Plugin headers must be valid and point to existing resources",
+            "required": ["Plugin Name", "Description", "Version", "Author"],
+            "optional": ["Plugin URI", "Author URI", "Text Domain", "Domain Path", "Requires at least", "Tested up to"],
+            "validation": {
+                "domainPath": "Must point to existing directory",
+                "textDomain": "Must be consistent throughout all files",
+                "network": "Remove 'Network: false' - only use 'Network: true' if actually supports multisite"
+            }
+        },
+        "textDomain": {
+            "rule": "Text domain must be consistent across all files and match expectations",
+            "pattern": "Prefer plugin folder name, but be consistent",
+            "functions": ["__(), _e(), esc_html__(), esc_attr__(), _n(), _x()"],
+            "validation": "All translation function calls must use the same text domain"
+        }
+    },
+    "automatedChecks": {
+        "description": "Run these checks before any plugin submission",
+        "checklist": [
+            "✓ All Exception messages wrapped in esc_html()",
+            "✓ All $_POST/$_GET input sanitized with isset() and wp_unslash()",
+            "✓ All nonce verification uses sanitized input",
+            "✓ No direct file operations (use WP_Filesystem)",
+            "✓ No development functions (error_log, print_r, var_dump)",
+            "✓ No hidden files (.gitignore, .gitkeep, .DS_Store)",
+            "✓ Languages directory exists with non-hidden placeholder",
+            "✓ Text domain consistent across all files",
+            "✓ Plugin headers point to existing resources",
+            "✓ All output properly escaped",
+            "✓ Version numbers updated in constants and headers",
+            "✓ AMPRE API calls properly rate limited and cached",
+            "✓ WordPress cron events properly scheduled and cleaned up",
+            "✓ No duplicate function declarations",
+            "✓ Run 'php -l' syntax check on all PHP files",
+            "✓ Run 'wp eval' test after major changes"
+        ]
+    },
+    "emergencyFixes": {
+        "description": "Quick fixes for common WordPress.org plugin checker failures",
+        "commands": {
+            "escapeExceptions": "Find all 'throw new Exception' and wrap messages in esc_html()",
+            "sanitizeInput": "Find all $_POST/$_GET and add isset(), wp_unslash(), sanitize_text_field()",
+            "conditionalDebug": "Wrap error_log() in if (defined('WP_DEBUG') && WP_DEBUG)",
+            "removeHidden": "Delete all files starting with . (dot)",
+            "createLanguagesPlaceholder": "Create languages/readme.txt if languages/.gitkeep exists"
+        }
+    },
+    "developmentBestPractices": {
+        "description": "Critical development practices learned from building this plugin",
+        "settingsAPI": {
+            "rule": "Always use WordPress Settings API properly",
+            "formStructure": "Form action='options.php', settings_fields(), do_settings_sections()",
+            "fieldNames": "Use 'plugin_settings[field_name]' format for all input names",
+            "saveButton": "Use submit_button() function inside form element",
+            "successMessage": "Add add_settings_error() in sanitize callback for confirmation",
+            "defaults": "Set proper default values to prevent validation errors"
+        },
+        "ajaxSecurity": {
+            "rule": "AJAX nonce consistency is critical",
+            "pattern": "Use same nonce action in wp_create_nonce() and wp_verify_nonce()",
+            "example": "JavaScript: wp_create_nonce('plugin_nonce'), PHP: wp_verify_nonce(..., 'plugin_nonce')",
+            "critical": "Mismatched nonces cause 401 errors and broken functionality"
+        },
+        "loggingSystem": {
+            "rule": "Implement comprehensive logging for debugging",
+            "structure": "Custom log directory in wp-content/uploads/plugin-logs/",
+            "protection": "Add .htaccess to prevent direct access to log files",
+            "rotation": "Implement log rotation when files exceed 5MB",
+            "functions": "Separate functions for logging, retrieving, and clearing logs",
+            "levels": "Support info, warning, error levels with context data"
+        },
+        "functionDuplication": {
+            "rule": "NEVER declare the same function twice",
+            "check": "Use grep to find duplicate function declarations before adding new ones",
+            "solution": "Remove old implementations when adding new ones",
+            "testing": "Always run 'php -l' after function changes"
+        },
+        "menuIntegration": {
+            "rule": "Properly integrate with existing Shift8 menu structure",
+            "pattern": "Check if main menu exists before creating, add submenu items only",
+            "duplication": "Avoid creating duplicate menu items by checking $GLOBALS['admin_page_hooks']",
+            "testing": "Deactivate/reactivate plugin to clear WordPress menu cache"
+        },
+        "userExperience": {
+            "rule": "Eliminate annoying user interface behaviors",
+            "unsavedWarnings": "Don't show 'unsaved changes' warnings on every field change",
+            "feedback": "Always provide clear success/error messages for user actions",
+            "testing": "Actually test every button and form to ensure they work as expected"
+        }
+    },
+    "testingProtocol": {
+        "description": "Mandatory testing steps after major changes",
+        "syntaxCheck": {
+            "command": "php -l filename.php",
+            "description": "Check for PHP syntax errors in all modified files"
+        },
+        "wordpressEval": {
+            "command": "wp eval \"echo 'Test passed';\"",
+            "description": "Verify WordPress can load without fatal errors"
+        },
+        "pluginLoad": {
+            "command": "wp eval \"if (class_exists('Plugin_Class')) echo 'OK'; else echo 'FAIL';\"",
+            "description": "Verify main plugin class loads correctly"
+        },
+        "functionalTesting": {
+            "description": "Manual testing checklist",
+            "steps": [
+                "Test settings save button works and shows success message",
+                "Test API connection button works without 401 errors",
+                "Test manual sync button works and generates logs",
+                "Test log viewer shows actual log content",
+                "Test clear logs function works",
+                "Verify no duplicate menu items appear",
+                "Test WP-CLI commands work properly"
+            ]
+        }
+    },
+    "wpCliIntegration": {
+        "description": "WP-CLI command implementation best practices",
+        "commandStructure": {
+            "rule": "Create comprehensive CLI commands for all major plugin functions",
+            "pattern": "Use WP_CLI::add_command() to register command classes",
+            "organization": "Separate CLI class in includes/class-plugin-cli.php",
+            "conditional": "Only load CLI class when WP-CLI is available: if (defined('WP_CLI') && WP_CLI)"
+        },
+        "commandFeatures": {
+            "helpText": "Provide detailed help text with examples for all commands",
+            "options": "Support --dry-run, --verbose, --limit, --force options where appropriate",
+            "progressBars": "Use WP_CLI\\Utils\\make_progress_bar for long operations",
+            "formatting": "Support multiple output formats (table, json, yaml) for data commands",
+            "errorHandling": "Use WP_CLI::error() for fatal errors, WP_CLI::warning() for non-fatal issues"
+        },
+        "commonCommands": {
+            "sync": "Manual sync with dry-run capability and progress tracking",
+            "settings": "Display current plugin configuration",
+            "test": "Test external API connections",
+            "logs": "View and manage log files",
+            "clear": "Clear caches, logs, or reset data with confirmation prompts"
+        },
+        "security": {
+            "rule": "CLI commands should respect WordPress permissions and plugin settings",
+            "validation": "Validate all input parameters and provide meaningful error messages",
+            "confirmation": "Use WP_CLI::confirm() for destructive operations unless --yes flag is used"
+        }
+    },
+    "loggingBestPractices": {
+        "description": "Comprehensive logging system implementation",
+        "fileStructure": {
+            "location": "wp-content/uploads/plugin-name-logs/",
+            "protection": "Always create .htaccess to deny direct access",
+            "rotation": "Implement automatic log rotation at 5MB with backup retention",
+            "naming": "Use descriptive log file names (plugin-sync.log, not debug.log)"
+        },
+        "logLevels": {
+            "info": "General operational messages and successful operations",
+            "warning": "Non-fatal issues that should be noted",
+            "error": "Fatal errors and exceptions that prevent operation",
+            "context": "Always include relevant context data as second parameter"
+        },
+        "functions": {
+            "write": "Centralized logging function with level support and context",
+            "read": "Function to retrieve recent log entries with line limits",
+            "clear": "Function to safely clear logs with user confirmation",
+            "rotate": "Automatic rotation when files exceed size limits"
+        },
+        "integration": {
+            "rule": "Log all major operations, API calls, and user actions",
+            "timing": "Log start and completion of long operations",
+            "errors": "Always log exceptions with full context and stack traces",
+            "debugging": "Respect debug mode settings but always log errors/warnings"
+        }
+    },
+    "apiIntegrationPatterns": {
+        "description": "Best practices for external API integration",
+        "serviceClasses": {
+            "rule": "Create dedicated service classes for each external API",
+            "structure": "Separate connection testing, data fetching, and error handling methods",
+            "configuration": "Accept settings array in constructor for flexibility",
+            "caching": "Implement appropriate caching for API responses"
+        },
+        "errorHandling": {
+            "rule": "Graceful degradation when APIs are unavailable",
+            "logging": "Log all API errors with request/response details",
+            "retries": "Implement exponential backoff for transient failures",
+            "fallbacks": "Provide meaningful fallback behavior when APIs fail"
+        },
+        "authentication": {
+            "rule": "Securely handle API credentials and tokens",
+            "storage": "Encrypt sensitive credentials before database storage",
+            "transmission": "Use proper headers and HTTPS for API communication",
+            "validation": "Test credentials before saving and provide clear feedback"
+        }
+    }
+}
