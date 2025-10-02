@@ -476,4 +476,152 @@ class PostManagerTest extends TestCase {
         
         $this->assertFalse($result, 'Should return false when post creation fails');
     }
+
+    /**
+     * Test WalkScore code generation
+     */
+    public function test_walkscore_code_generation() {
+        // Mock esc_js function for this test
+        Functions\when('esc_js')->alias(function($text) { return addslashes($text); });
+        
+        // Test with WalkScore enabled
+        $settings = array(
+            'walkscore_id' => 'test_ws_id'
+        );
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('get_walkscore_code');
+        $method->setAccessible(true);
+
+        $listing = array(
+            'UnparsedAddress' => '123 Main Street, Toronto, ON',
+            'City' => 'Toronto',
+            'StateOrProvince' => 'ON'
+        );
+
+        $result = $method->invoke($post_manager, $listing);
+
+        $this->assertStringContainsString('ws_wsid = \'test_ws_id\'', $result);
+        $this->assertStringContainsString('walkscore.com', $result);
+        $this->assertStringContainsString('123', $result); // Street number
+        $this->assertStringContainsString('Main Street', $result); // Street name
+    }
+
+    /**
+     * Test WalkScore code generation without API credentials
+     */
+    public function test_walkscore_code_without_credentials() {
+        // Test without WalkScore ID
+        $settings = array(); // No walkscore_id
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('get_walkscore_code');
+        $method->setAccessible(true);
+
+        $listing = array('UnparsedAddress' => '123 Main Street, Toronto, ON');
+        $result = $method->invoke($post_manager, $listing);
+
+        $this->assertEquals('', $result, 'Should return empty string without credentials');
+    }
+
+    /**
+     * Test geocoding latitude retrieval
+     */
+    public function test_get_listing_latitude() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('get_listing_latitude');
+        $method->setAccessible(true);
+
+        // Test with AMPRE provided coordinates
+        $listing_with_coords = array(
+            'Latitude' => '43.6532',
+            'UnparsedAddress' => '123 Main Street, Toronto, ON'
+        );
+        $result = $method->invoke($this->post_manager, $listing_with_coords);
+        $this->assertEquals(43.6532, $result);
+
+        // Test without coordinates (should return default Toronto)
+        $listing_without_coords = array(
+            'UnparsedAddress' => '123 Main Street, Toronto, ON'
+        );
+        $result = $method->invoke($this->post_manager, $listing_without_coords);
+        $this->assertEquals('43.6532', $result); // Default Toronto latitude
+    }
+
+    /**
+     * Test geocoding longitude retrieval
+     */
+    public function test_get_listing_longitude() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('get_listing_longitude');
+        $method->setAccessible(true);
+
+        // Test with AMPRE provided coordinates
+        $listing_with_coords = array(
+            'Longitude' => '-79.3832',
+            'UnparsedAddress' => '123 Main Street, Toronto, ON'
+        );
+        $result = $method->invoke($this->post_manager, $listing_with_coords);
+        $this->assertEquals(-79.3832, $result);
+
+        // Test without coordinates (should return default Toronto)
+        $listing_without_coords = array(
+            'UnparsedAddress' => '123 Main Street, Toronto, ON'
+        );
+        $result = $method->invoke($this->post_manager, $listing_without_coords);
+        $this->assertEquals('-79.3832', $result); // Default Toronto longitude
+    }
+
+    /**
+     * Test address parsing functionality
+     */
+    public function test_address_parsing() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('parse_address');
+        $method->setAccessible(true);
+
+        $test_addresses = array(
+            '123 Main Street, Toronto, ON' => array(
+                'number' => '123',
+                'street' => 'Main Street',
+                'unit' => ''
+            ),
+            '456 Oak Avenue Unit 5, Toronto, ON' => array(
+                'number' => '456',
+                'street' => 'Oak Avenue',
+                'unit' => '5' // parse_address extracts just the unit number, not "Unit 5"
+            ),
+            '789 Pine Road Apt 2B, Toronto, ON' => array(
+                'number' => '789',
+                'street' => 'Pine Road',
+                'unit' => '2B' // parse_address extracts just the unit number, not "Apt 2B"
+            )
+        );
+
+        foreach ($test_addresses as $address => $expected) {
+            $result = $method->invoke($this->post_manager, $address);
+            $this->assertEquals($expected['number'], $result['number'], "Failed parsing number for: $address");
+            $this->assertEquals($expected['street'], $result['street'], "Failed parsing street for: $address");
+            $this->assertEquals($expected['unit'], $result['unit'], "Failed parsing unit for: $address");
+        }
+    }
+
+    /**
+     * Test geocoding without API key
+     */
+    public function test_geocoding_without_api_key() {
+        // Test without Google Maps API key
+        $settings = array(); // No google_maps_api_key
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('geocode_address');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($post_manager, '123 Main Street, Toronto, ON');
+
+        $this->assertFalse($result, 'Should return false without API key');
+    }
 }

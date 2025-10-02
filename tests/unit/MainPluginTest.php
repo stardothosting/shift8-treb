@@ -263,6 +263,7 @@ class MainPluginTest extends TestCase {
             ->justReturn(array('bearer_token' => ''));
         
         // Mock shift8_treb_log function
+        Functions\when('esc_html')->alias(function($text) { return htmlspecialchars($text); });
         Functions\when('shift8_treb_log')->justReturn(true);
         
         $this->plugin->sync_listings_cron();
@@ -288,6 +289,7 @@ class MainPluginTest extends TestCase {
         
         // Mock shift8_treb_log function
         Functions\when('shift8_treb_log')->justReturn(true);
+        Functions\when('esc_html')->alias(function($text) { return htmlspecialchars($text); });
         
         // Mock the service classes (they will be included in the sync method)
         Functions\when('class_exists')->justReturn(true);
@@ -463,5 +465,70 @@ class MainPluginTest extends TestCase {
         $input = array('listing_age_days' => '-5');
         $result = $this->plugin->sanitize_settings($input);
         $this->assertEquals(5, $result['listing_age_days'], 'absint(-5) should return 5, then max(1, 5) returns 5');
+    }
+
+    /**
+     * Test sanitization of new WalkScore and Google Maps settings
+     */
+    public function test_sanitize_walkscore_and_maps_settings() {
+        // Mock required functions
+        Functions\when('sanitize_text_field')->alias(function($input) { return trim($input); });
+        Functions\when('add_settings_error')->justReturn(true);
+        Functions\when('esc_html__')->alias(function($text, $domain) { return $text; });
+
+        $input = array(
+            'google_maps_api_key' => '  AIzaSyTest123  ',
+            'walkscore_id' => '  ws_12345  '
+        );
+
+        $result = $this->plugin->sanitize_settings($input);
+
+        $this->assertEquals('AIzaSyTest123', $result['google_maps_api_key']);
+        $this->assertEquals('ws_12345', $result['walkscore_id']);
+    }
+
+    /**
+     * Test bearer token preservation when empty input provided
+     */
+    public function test_bearer_token_preservation() {
+        // Mock existing settings with a token
+        Functions\when('get_option')->justReturn(array(
+            'bearer_token' => 'existing_encrypted_token'
+        ));
+        Functions\when('add_settings_error')->justReturn(true);
+        Functions\when('esc_html__')->alias(function($text, $domain) { return $text; });
+
+        $input = array(
+            'bearer_token' => '', // Empty token should preserve existing
+            'sync_frequency' => 'daily'
+        );
+
+        $result = $this->plugin->sanitize_settings($input);
+
+        $this->assertEquals('existing_encrypted_token', $result['bearer_token']);
+        $this->assertEquals('daily', $result['sync_frequency']);
+    }
+
+    /**
+     * Test listing age days bounds checking
+     */
+    public function test_listing_age_days_bounds() {
+        Functions\when('add_settings_error')->justReturn(true);
+        Functions\when('esc_html__')->alias(function($text, $domain) { return $text; });
+
+        $test_cases = array(
+            array('input' => 0, 'expected' => 1),     // Below minimum
+            array('input' => 1, 'expected' => 1),     // At minimum
+            array('input' => 30, 'expected' => 30),   // Normal value
+            array('input' => 365, 'expected' => 365), // At maximum
+            array('input' => 500, 'expected' => 365), // Above maximum
+        );
+
+        foreach ($test_cases as $case) {
+            $input = array('listing_age_days' => $case['input']);
+            $result = $this->plugin->sanitize_settings($input);
+            $this->assertEquals($case['expected'], $result['listing_age_days'], 
+                "Failed for input: {$case['input']}");
+        }
     }
 }

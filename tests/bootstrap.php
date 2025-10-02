@@ -108,6 +108,49 @@ if (!class_exists('WP_CLI')) {
     }
 }
 
+// Mock WP_Error class for tests
+if (!class_exists('WP_Error')) {
+    class WP_Error {
+        private $errors = array();
+        private $error_data = array();
+
+        public function __construct($code = '', $message = '', $data = '') {
+            if (!empty($code)) {
+                $this->errors[$code][] = $message;
+                if (!empty($data)) {
+                    $this->error_data[$code] = $data;
+                }
+            }
+        }
+
+        public function get_error_code() {
+            $codes = array_keys($this->errors);
+            return empty($codes) ? '' : $codes[0];
+        }
+
+        public function get_error_message($code = '') {
+            if (empty($code)) {
+                $code = $this->get_error_code();
+            }
+            if (isset($this->errors[$code])) {
+                return $this->errors[$code][0];
+            }
+            return '';
+        }
+
+        public function get_error_messages($code = '') {
+            if (empty($code)) {
+                $all_messages = array();
+                foreach ($this->errors as $code => $messages) {
+                    $all_messages = array_merge($all_messages, $messages);
+                }
+                return $all_messages;
+            }
+            return isset($this->errors[$code]) ? $this->errors[$code] : array();
+        }
+    }
+}
+
 // Mock add_action and add_filter to prevent errors during plugin load
 Functions\when('add_action')->justReturn(true);
 Functions\when('add_filter')->justReturn(true);
@@ -217,6 +260,11 @@ Functions\when('wp_trim_words')->alias(function($text, $num_words = 55, $more = 
 
 Functions\when('sanitize_file_name')->alias(function($filename) {
     return preg_replace('/[^a-zA-Z0-9._-]/', '', $filename);
+});
+
+// Mock esc_js function
+Functions\when('esc_js')->alias(function($text) {
+    return addslashes($text);
 });
 
 // Mock WordPress post functions

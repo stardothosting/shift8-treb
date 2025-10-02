@@ -244,7 +244,6 @@ class Shift8_TREB {
                     'max_listings_per_query' => 100,
                     'debug_enabled' => '0',
                     'google_maps_api_key' => '',
-                    'walkscore_api_key' => '',
                     'walkscore_id' => '',
                     'member_id' => '',
                     'excluded_member_ids' => '',
@@ -308,10 +307,7 @@ class Shift8_TREB {
             $sanitized['google_maps_api_key'] = sanitize_text_field($input['google_maps_api_key']);
         }
         
-        // Sanitize WalkScore settings
-        if (isset($input['walkscore_api_key'])) {
-            $sanitized['walkscore_api_key'] = sanitize_text_field($input['walkscore_api_key']);
-        }
+        // Sanitize WalkScore ID (no API key needed)
         if (isset($input['walkscore_id'])) {
             $sanitized['walkscore_id'] = sanitize_text_field($input['walkscore_id']);
         }
@@ -476,78 +472,36 @@ class Shift8_TREB {
      * @since 1.0.0
      */
     public function sync_listings_cron() {
-        shift8_treb_debug_log('=== TREB SYNC STARTED ===');
+        shift8_treb_debug_log('=== TREB CRON SYNC STARTED ===');
         
         try {
-            // Get plugin settings
-            $settings = get_option('shift8_treb_settings', array());
-            
-            // Add last sync timestamp for incremental sync
-            $last_sync = get_option('shift8_treb_last_sync', '');
-            if (!empty($last_sync)) {
-                $settings['last_sync_timestamp'] = $last_sync;
+            // Include and initialize sync service
+            require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-sync-service.php';
+            $sync_service = new Shift8_TREB_Sync_Service();
+
+            // Execute sync (cron uses incremental sync by default)
+            $results = $sync_service->execute_sync(array(
+                'dry_run' => false,
+                'verbose' => false
+            ));
+
+            if (!$results['success']) {
+                throw new Exception($results['message']);
             }
-            
-            if (empty($settings['bearer_token'])) {
-                throw new Exception('Bearer token not configured');
-            }
-            
-            // Decrypt bearer token (handles both encrypted and plain JWT tokens)
-            $bearer_token = shift8_treb_decrypt_data($settings['bearer_token']);
-            $settings['bearer_token'] = $bearer_token;
-            
-            // Initialize AMPRE service
-            require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-ampre-service.php';
-            $ampre_service = new Shift8_TREB_AMPRE_Service($settings);
-            
-            // Initialize post manager
-            require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-post-manager.php';
-            $post_manager = new Shift8_TREB_Post_Manager($settings);
-            
-            // Fetch listings from AMPRE API
-            $listings = $ampre_service->get_listings();
-            
-            if (empty($listings)) {
-                shift8_treb_debug_log('No listings returned from AMPRE API');
-                return;
-            }
-            
-            shift8_treb_debug_log('Fetched listings from AMPRE', array('count' => count($listings)));
-            
-            // Process each listing
-            $processed = 0;
-            $errors = 0;
-            
-            foreach ($listings as $listing) {
-                try {
-                    $result = $post_manager->process_listing($listing);
-                    if ($result) {
-                        $processed++;
-                    }
-                } catch (Exception $e) {
-                    $errors++;
-                    shift8_treb_debug_log('Error processing listing', array(
-                        'listing_key' => isset($listing['ListingKey']) ? $listing['ListingKey'] : 'unknown',
-                        'error' => $e->getMessage()
-                    ));
-                }
-            }
-            
-            // Update last sync timestamp for incremental sync
-            $current_timestamp = current_time('c'); // ISO 8601 format
-            update_option('shift8_treb_last_sync', $current_timestamp);
-            
-            shift8_treb_debug_log('=== TREB SYNC COMPLETED ===', array(
-                'total_listings' => count($listings),
-                'processed' => $processed,
-                'errors' => $errors,
-                'next_sync_from' => $current_timestamp
+
+            shift8_treb_debug_log('=== TREB CRON SYNC COMPLETED ===', array(
+                'total_listings' => $results['total_listings'],
+                'processed' => $results['processed'],
+                'created' => $results['created'],
+                'updated' => $results['updated'],
+                'skipped' => $results['skipped'],
+                'errors' => $results['errors']
             ));
             
         } catch (Exception $e) {
-            shift8_treb_debug_log('TREB sync failed', array(
-                'error' => $e->getMessage()
-            ));
+            shift8_treb_debug_log('TREB cron sync failed', array(
+                'error' => esc_html($e->getMessage())
+            ), 'error');
         }
     }
     

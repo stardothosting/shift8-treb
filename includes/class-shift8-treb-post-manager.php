@@ -1569,8 +1569,8 @@ class Shift8_TREB_Post_Manager {
      * @return string WalkScore embed code or empty string
      */
     private function get_walkscore_code($listing) {
-        // Check if WalkScore is enabled - requires both API key and ID
-        if (empty($this->settings['walkscore_api_key']) || empty($this->settings['walkscore_id'])) {
+        // Check if WalkScore is enabled - only requires walkscore_id
+        if (empty($this->settings['walkscore_id'])) {
             return '';
         }
 

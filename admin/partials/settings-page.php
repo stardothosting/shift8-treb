@@ -199,20 +199,6 @@ $sync_status = array(
                         </tr>
                         <tr>
                             <th scope="row">
-                                <label for="walkscore_api_key"><?php esc_html_e('WalkScore API Key', 'shift8-treb'); ?></label>
-                            </th>
-                            <td>
-                                <input type="text" 
-                                       id="walkscore_api_key" 
-                                       name="shift8_treb_settings[walkscore_api_key]" 
-                                       value="<?php echo esc_attr($settings['walkscore_api_key']); ?>" 
-                                       class="regular-text" 
-                                       placeholder="<?php esc_attr_e('Optional: For WalkScore integration', 'shift8-treb'); ?>" />
-                                <p class="description"><?php esc_html_e('WalkScore API key for walkability scoring (optional).', 'shift8-treb'); ?></p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row">
                                 <label for="walkscore_id"><?php esc_html_e('WalkScore ID', 'shift8-treb'); ?></label>
                             </th>
                             <td>
@@ -221,8 +207,8 @@ $sync_status = array(
                                        name="shift8_treb_settings[walkscore_id]" 
                                        value="<?php echo esc_attr($settings['walkscore_id']); ?>" 
                                        class="regular-text" 
-                                       placeholder="<?php esc_attr_e('Optional: WalkScore widget ID', 'shift8-treb'); ?>" />
-                                <p class="description"><?php esc_html_e('WalkScore ID for embedding walkability widgets in listings.', 'shift8-treb'); ?></p>
+                                       placeholder="<?php esc_attr_e('Optional: Leave empty to disable WalkScore', 'shift8-treb'); ?>" />
+                                <p class="description"><?php esc_html_e('WalkScore ID for embedding walkability widgets in listings. No API key required - just enter your WalkScore ID to enable.', 'shift8-treb'); ?></p>
                             </td>
                         </tr>
                         <tr>

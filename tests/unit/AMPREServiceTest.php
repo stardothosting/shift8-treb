@@ -410,5 +410,140 @@ class AMPREServiceTest extends TestCase {
         
         $this->assertStringContainsString('query.ampre.ca/odata/', $constant, 'Should use correct AMPRE API base URL');
         $this->assertStringEndsWith('/', $constant, 'Base URL should end with slash');
+        
+        // Test that media API method exists
+        $this->assertTrue(method_exists($this->ampre_service, 'get_media_for_listing'));
+    }
+
+    /**
+     * Test get_media_for_listing success
+     */
+    public function test_get_media_for_listing_success() {
+        // Mock successful media API response
+        Functions\when('wp_remote_get')->justReturn(array(
+            'response' => array('code' => 200),
+            'body' => wp_json_encode(array(
+                'value' => array(
+                    array(
+                        'MediaCategory' => 'Photo',
+                        'ImageSizeDescription' => 'Largest',
+                        'MediaURL' => 'https://example.com/image1.jpg',
+                        'Order' => 0,
+                        'PreferredPhotoYN' => true
+                    ),
+                    array(
+                        'MediaCategory' => 'Photo', 
+                        'ImageSizeDescription' => 'Largest',
+                        'MediaURL' => 'https://example.com/image2.jpg',
+                        'Order' => 1,
+                        'PreferredPhotoYN' => false
+                    ),
+                    array(
+                        'MediaCategory' => 'Document', // Should be filtered out
+                        'ImageSizeDescription' => 'Largest',
+                        'MediaURL' => 'https://example.com/doc.pdf',
+                        'Order' => 2,
+                        'PreferredPhotoYN' => false
+                    )
+                )
+            ))
+        ));
+
+        Functions\when('wp_remote_retrieve_response_code')->justReturn(200);
+        Functions\when('wp_remote_retrieve_body')->justReturn(wp_json_encode(array(
+            'value' => array(
+                array(
+                    'MediaCategory' => 'Photo',
+                    'ImageSizeDescription' => 'Largest',
+                    'MediaURL' => 'https://example.com/image1.jpg',
+                    'Order' => 0,
+                    'PreferredPhotoYN' => true
+                ),
+                array(
+                    'MediaCategory' => 'Photo',
+                    'ImageSizeDescription' => 'Largest', 
+                    'MediaURL' => 'https://example.com/image2.jpg',
+                    'Order' => 1,
+                    'PreferredPhotoYN' => false
+                )
+            )
+        )));
+
+        $result = $this->ampre_service->get_media_for_listing('W12345678');
+
+        $this->assertIsArray($result);
+        $this->assertCount(2, $result); // Should filter out non-photo items
+        $this->assertEquals('https://example.com/image1.jpg', $result[0]['MediaURL']);
+        $this->assertTrue($result[0]['PreferredPhotoYN']);
+    }
+
+    /**
+     * Test get_media_for_listing with missing bearer token
+     */
+    public function test_get_media_for_listing_missing_token() {
+        $settings = array('bearer_token' => '');
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $result = $service->get_media_for_listing('W12345678');
+
+        $this->assertInstanceOf('WP_Error', $result);
+        $this->assertEquals('ampre_media_error', $result->get_error_code());
+    }
+
+    /**
+     * Test get_media_for_listing with empty listing key
+     */
+    public function test_get_media_for_listing_empty_key() {
+        $result = $this->ampre_service->get_media_for_listing('');
+
+        $this->assertInstanceOf('WP_Error', $result);
+        $this->assertEquals('ampre_media_error', $result->get_error_code());
+    }
+
+    /**
+     * Test get_media_for_listing API error
+     */
+    public function test_get_media_for_listing_api_error() {
+        $wp_error = new \WP_Error('http_error', 'Connection failed');
+        Functions\when('wp_remote_get')->justReturn($wp_error);
+        Functions\when('is_wp_error')->justReturn(true);
+
+        $result = $this->ampre_service->get_media_for_listing('W12345678');
+
+        $this->assertInstanceOf('WP_Error', $result);
+        $this->assertEquals('ampre_media_error', $result->get_error_code());
+    }
+
+    /**
+     * Test get_media_for_listing HTTP error
+     */
+    public function test_get_media_for_listing_http_error() {
+        Functions\when('wp_remote_get')->justReturn(array(
+            'response' => array('code' => 404),
+            'body' => 'Not Found'
+        ));
+        Functions\when('wp_remote_retrieve_response_code')->justReturn(404);
+
+        $result = $this->ampre_service->get_media_for_listing('W12345678');
+
+        $this->assertInstanceOf('WP_Error', $result);
+        $this->assertEquals('ampre_media_error', $result->get_error_code());
+    }
+
+    /**
+     * Test get_media_for_listing invalid JSON
+     */
+    public function test_get_media_for_listing_invalid_json() {
+        Functions\when('wp_remote_get')->justReturn(array(
+            'response' => array('code' => 200),
+            'body' => 'invalid json'
+        ));
+        Functions\when('wp_remote_retrieve_response_code')->justReturn(200);
+        Functions\when('wp_remote_retrieve_body')->justReturn('invalid json');
+
+        $result = $this->ampre_service->get_media_for_listing('W12345678');
+
+        $this->assertInstanceOf('WP_Error', $result);
+        $this->assertEquals('ampre_media_error', $result->get_error_code());
     }
 }
