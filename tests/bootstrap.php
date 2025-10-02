@@ -79,6 +79,35 @@ Functions\when('esc_url_raw')->alias(function($url) {
     return filter_var($url, FILTER_SANITIZE_URL);
 });
 
+// Mock WP_CLI class to prevent code coverage errors
+if (!class_exists('WP_CLI')) {
+    class WP_CLI {
+        public static function add_command($name, $callable) {
+            return true;
+        }
+        
+        public static function success($message) {
+            return true;
+        }
+        
+        public static function error($message) {
+            return true;
+        }
+        
+        public static function warning($message) {
+            return true;
+        }
+        
+        public static function log($message) {
+            return true;
+        }
+        
+        public static function confirm($message) {
+            return true;
+        }
+    }
+}
+
 // Mock add_action and add_filter to prevent errors during plugin load
 Functions\when('add_action')->justReturn(true);
 Functions\when('add_filter')->justReturn(true);
@@ -175,6 +204,20 @@ Functions\when('wp_upload_bits')->justReturn(array(
     'url' => 'http://example.com/test.jpg',
     'error' => false
 ));
+Functions\when('wp_schedule_event')->justReturn(true);
+Functions\when('wp_insert_category')->justReturn(array('term_id' => 1));
+Functions\when('wp_generate_attachment_metadata')->justReturn(array());
+Functions\when('wp_update_attachment_metadata')->justReturn(true);
+Functions\when('wp_set_post_categories')->justReturn(true);
+Functions\when('get_site_url')->justReturn('http://example.com');
+Functions\when('wp_trim_words')->alias(function($text, $num_words = 55, $more = null) {
+    $words = explode(' ', $text);
+    return implode(' ', array_slice($words, 0, $num_words));
+});
+
+Functions\when('sanitize_file_name')->alias(function($filename) {
+    return preg_replace('/[^a-zA-Z0-9._-]/', '', $filename);
+});
 
 // Mock WordPress post functions
 Functions\when('wp_insert_post')->justReturn(123);

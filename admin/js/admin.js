@@ -51,9 +51,11 @@
         var $button = $('#test-api-connection');
         var $result = $('#api-test-result');
         
-        // Check if bearer token is entered
+        // Check if bearer token is entered or if there's an existing token
         var bearerToken = $('#bearer_token').val();
-        if (!bearerToken) {
+        var hasExistingToken = $('#bearer_token').attr('placeholder').indexOf('Token is set') !== -1;
+        
+        if (!bearerToken && !hasExistingToken) {
             showResult($result, 'error', shift8TREB.strings.error + ' Please enter a bearer token first.');
             return;
         }

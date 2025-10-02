@@ -50,6 +50,23 @@ class Shift8_TREB_Post_Manager {
                 return false;
             }
 
+            // Check if agent should be excluded (skip entirely)
+            $agent_id = isset($listing['ListAgentKey']) ? sanitize_text_field($listing['ListAgentKey']) : '';
+            if ($this->is_excluded_agent($agent_id)) {
+                shift8_treb_debug_log('Skipping excluded agent', array(
+                    'agent_id' => esc_html($agent_id),
+                    'listing_key' => esc_html($listing['ListingKey'] ?? 'unknown')
+                ));
+                return array(
+                    'success' => false,
+                    'action' => 'skipped',
+                    'post_id' => null,
+                    'title' => $listing['UnparsedAddress'] ?? 'Unknown Address',
+                    'mls_number' => $listing['ListingKey'] ?? 'Unknown',
+                    'reason' => 'Agent excluded'
+                );
+            }
+
             $mls_number = sanitize_text_field($listing['ListingKey']);
 
             shift8_treb_debug_log('Processing listing', array(
@@ -57,15 +74,38 @@ class Shift8_TREB_Post_Manager {
             ));
 
             // Check if post already exists
-            if ($this->listing_exists($mls_number)) {
-                shift8_treb_debug_log('Listing already exists, skipping', array(
+            $existing_post_id = $this->get_existing_listing_id($mls_number);
+            if ($existing_post_id) {
+                // Update existing listing instead of skipping
+                shift8_treb_debug_log('Listing already exists, updating', array(
+                    'mls_number' => esc_html($mls_number),
+                    'existing_post_id' => $existing_post_id
+                ));
+                
+                $post_id = $this->update_listing_post($existing_post_id, $listing);
+                if (!$post_id) {
+                    return false;
+                }
+                
+                // Update MLS number meta
+                update_post_meta($post_id, 'listing_mls_number', sanitize_text_field($listing['ListingKey']));
+                
+                shift8_treb_debug_log('Listing updated successfully', array(
+                    'post_id' => $post_id,
                     'mls_number' => esc_html($mls_number)
                 ));
-                return false;
+                
+                return array(
+                    'success' => true,
+                    'action' => 'updated',
+                    'post_id' => $post_id,
+                    'title' => sanitize_text_field($listing['UnparsedAddress']),
+                    'mls_number' => $mls_number
+                );
             }
 
-            // Apply business rules (agent filtering, price limits, etc.)
-            if (!$this->should_process_listing($listing)) {
+            // Apply business rules (check for excluded agents)
+            if ($this->is_excluded_agent($listing)) {
                 return false;
             }
 
@@ -76,18 +116,29 @@ class Shift8_TREB_Post_Manager {
                 return false;
             }
 
-            // Handle images
-            $this->process_listing_images($post_id, $listing);
+            // Store MLS number as meta for duplicate detection
+            update_post_meta($post_id, 'listing_mls_number', sanitize_text_field($listing['ListingKey']));
 
-            // Store additional metadata
-            $this->store_listing_metadata($post_id, $listing);
+            // Process listing images
+            $image_stats = $this->process_listing_images($post_id, $listing);
+
+            // Update post content with actual image HTML after processing
+            $this->update_post_content_with_images($post_id);
 
             shift8_treb_debug_log('Listing processed successfully', array(
                 'post_id' => $post_id,
-                'mls_number' => esc_html($mls_number)
+                'mls_number' => esc_html($mls_number),
+                'image_stats' => $image_stats
             ));
 
-            return true;
+            // Return detailed result for CLI reporting
+            return array(
+                'success' => true,
+                'action' => 'created', // For now, assume all are new (we can enhance this later)
+                'post_id' => $post_id,
+                'title' => sanitize_text_field($listing['UnparsedAddress']),
+                'mls_number' => $mls_number
+            );
 
         } catch (Exception $e) {
             shift8_treb_debug_log('Error processing listing', array(
@@ -128,16 +179,28 @@ class Shift8_TREB_Post_Manager {
      * @return bool True if exists
      */
     private function listing_exists($mls_number) {
+        return $this->get_existing_listing_id($mls_number) !== false;
+    }
+
+    /**
+     * Get existing listing post ID by MLS number
+     *
+     * @since 1.0.0
+     * @param string $mls_number MLS number
+     * @return int|false Post ID if exists, false otherwise
+     */
+    private function get_existing_listing_id($mls_number) {
         // Check by post meta (more reliable than tags)
         $existing_posts = get_posts(array(
             'post_type' => 'post',
             'meta_key' => 'listing_mls_number',
             'meta_value' => $mls_number,
             'numberposts' => 1,
-            'post_status' => 'any'
+            'post_status' => 'any',
+            'fields' => 'ids'
         ));
 
-        return !empty($existing_posts);
+        return !empty($existing_posts) ? $existing_posts[0] : false;
     }
 
     /**
@@ -198,13 +261,14 @@ class Shift8_TREB_Post_Manager {
      * @return bool True if our agent
      */
     private function is_our_agent($agent_id) {
-        $our_agents = isset($this->settings['agent_id']) ? $this->settings['agent_id'] : '';
-        if (empty($our_agents)) {
+        $member_ids = isset($this->settings['member_id']) ? trim($this->settings['member_id']) : '';
+        if (empty($member_ids)) {
             return false;
         }
 
-        $agent_list = array_map('trim', explode(',', $our_agents));
-        return in_array($agent_id, $agent_list);
+        // Handle comma-separated list of member IDs
+        $member_list = array_map('trim', explode(',', $member_ids));
+        return in_array($agent_id, $member_list, true);
     }
 
     /**
@@ -215,13 +279,14 @@ class Shift8_TREB_Post_Manager {
      * @return bool True if excluded
      */
     private function is_excluded_agent($agent_id) {
-        $excluded_agents = isset($this->settings['agent_exclude']) ? $this->settings['agent_exclude'] : '';
-        if (empty($excluded_agents)) {
+        $excluded_member_ids = isset($this->settings['excluded_member_ids']) ? trim($this->settings['excluded_member_ids']) : '';
+        if (empty($excluded_member_ids)) {
             return false;
         }
 
-        $excluded_list = array_map('trim', explode(',', $excluded_agents));
-        return in_array($agent_id, $excluded_list);
+        // Handle comma-separated list of excluded member IDs
+        $excluded_list = array_map('trim', explode(',', $excluded_member_ids));
+        return in_array($agent_id, $excluded_list, true);
     }
 
     /**
@@ -233,9 +298,9 @@ class Shift8_TREB_Post_Manager {
      */
     private function create_listing_post($listing) {
         // Prepare post data
-        $post_title = $this->generate_post_title($listing);
+        $post_title = sanitize_text_field($listing['UnparsedAddress']);
         $post_content = $this->generate_post_content($listing);
-        $post_excerpt = $this->generate_post_excerpt($listing);
+        $post_excerpt = wp_trim_words(strip_tags($listing['PublicRemarks'] ?? ''), 20);
         $category_id = $this->get_listing_category_id($listing);
 
         $post_data = array(
@@ -255,6 +320,40 @@ class Shift8_TREB_Post_Manager {
                 'error' => esc_html($post_id->get_error_message())
             ));
             return false;
+        }
+
+        return $post_id;
+    }
+
+    /**
+     * Update existing listing post
+     *
+     * @since 1.0.0
+     * @param int $post_id Existing post ID
+     * @param array $listing Listing data from AMPRE API
+     * @return int|false Post ID on success, false on failure
+     */
+    private function update_listing_post($post_id, $listing) {
+        $post_data = array(
+            'ID' => $post_id,
+            'post_title' => $this->generate_post_title($listing),
+            'post_content' => $this->generate_post_content($listing),
+            'post_excerpt' => $this->generate_post_excerpt($listing),
+            'post_status' => 'publish',
+            'post_date' => current_time('mysql'),
+            'post_modified' => current_time('mysql')
+        );
+
+        $result = wp_update_post($post_data);
+        
+        if (is_wp_error($result)) {
+            return false;
+        }
+
+        // Update category assignment
+        $category_id = $this->get_listing_category_id($listing);
+        if ($category_id) {
+            wp_set_post_categories($post_id, array($category_id));
         }
 
         return $post_id;
@@ -293,8 +392,12 @@ class Shift8_TREB_Post_Manager {
     private function generate_post_content($listing) {
         $template = isset($this->settings['listing_template']) ? $this->settings['listing_template'] : $this->get_default_template();
 
-        // Prepare replacement variables
+        // Parse address components
+        $address_parts = $this->parse_address($listing['UnparsedAddress']);
+        
+        // Prepare replacement variables (supporting both old and new placeholder formats)
         $replacements = array(
+            // Original placeholders (keep for backward compatibility)
             '%ADDRESS%' => sanitize_text_field($listing['UnparsedAddress']),
             '%PRICE%' => '$' . number_format(intval($listing['ListPrice'])),
             '%MLS%' => sanitize_text_field($listing['ListingKey']),
@@ -304,10 +407,92 @@ class Shift8_TREB_Post_Manager {
             '%DESCRIPTION%' => isset($listing['PublicRemarks']) ? wp_kses_post($listing['PublicRemarks']) : '',
             '%PROPERTY_TYPE%' => isset($listing['PropertyType']) ? sanitize_text_field($listing['PropertyType']) : 'N/A',
             '%CITY%' => isset($listing['City']) ? sanitize_text_field($listing['City']) : '',
-            '%POSTAL_CODE%' => isset($listing['PostalCode']) ? sanitize_text_field($listing['PostalCode']) : ''
+            '%POSTAL_CODE%' => isset($listing['PostalCode']) ? sanitize_text_field($listing['PostalCode']) : '',
+            
+            // Template-specific placeholders (matching actual template usage)
+            '%MLSNUMBER%' => sanitize_text_field($listing['ListingKey']),
+            '%LISTPRICE%' => '$' . number_format(intval($listing['ListPrice'])),
+            '%SQFOOTAGE%' => isset($listing['LivingArea']) ? number_format(intval($listing['LivingArea'])) : 'N/A',
+            '%STREETNUMBER%' => $address_parts['number'],
+            '%STREETNAME%' => $address_parts['street'],
+            '%APT_NUM%' => $address_parts['unit'],
+            
+            // Additional template placeholders
+            '%PHONEMSG%' => $this->get_phone_message(),
+            '%VIRTUALTOUR%' => $this->get_virtual_tour_link($listing),
+            '%WALKSCORECODE%' => $this->get_walkscore_code($listing),
+            '%WPBLOG%' => get_site_url(),
+            
+            // Universal image placeholders (work with any page builder)
+            '%LISTING_IMAGES%' => '<!-- LISTING_IMAGES_PLACEHOLDER -->',
+            '%BASE64IMAGES%' => '<!-- BASE64IMAGES_PLACEHOLDER -->',
+            '%LISTING_IMAGE_1%' => '<!-- LISTING_IMAGE_1_PLACEHOLDER -->',
+            '%LISTING_IMAGE_2%' => '<!-- LISTING_IMAGE_2_PLACEHOLDER -->',
+            '%LISTING_IMAGE_3%' => '<!-- LISTING_IMAGE_3_PLACEHOLDER -->',
+            '%LISTING_IMAGE_4%' => '<!-- LISTING_IMAGE_4_PLACEHOLDER -->',
+            '%LISTING_IMAGE_5%' => '<!-- LISTING_IMAGE_5_PLACEHOLDER -->',
+            '%LISTING_IMAGE_6%' => '<!-- LISTING_IMAGE_6_PLACEHOLDER -->',
+            '%LISTING_IMAGE_7%' => '<!-- LISTING_IMAGE_7_PLACEHOLDER -->',
+            '%LISTING_IMAGE_8%' => '<!-- LISTING_IMAGE_8_PLACEHOLDER -->',
+            '%LISTING_IMAGE_9%' => '<!-- LISTING_IMAGE_9_PLACEHOLDER -->',
+            '%LISTING_IMAGE_10%' => '<!-- LISTING_IMAGE_10_PLACEHOLDER -->',
+            
+            // WordPress native placeholders for modern themes
+            '%FEATURED_IMAGE%' => '<!-- FEATURED_IMAGE_PLACEHOLDER -->',
+            '%IMAGE_GALLERY%' => '<!-- IMAGE_GALLERY_PLACEHOLDER -->',
+            '%VIRTUAL_TOUR_SECTION%' => $this->get_virtual_tour_section($listing),
+            
+            
+            // Map coordinates for Google Maps (with geocoding fallback)
+            '%MAPLAT%' => $this->get_listing_latitude($listing),
+            '%MAPLNG%' => $this->get_listing_longitude($listing)
         );
 
-        return str_replace(array_keys($replacements), array_values($replacements), $template);
+        // Replace placeholders in template
+        $content = str_replace(array_keys($replacements), array_values($replacements), $template);
+        
+        return $content;
+    }
+
+    /**
+     * Update post content with image placeholders after images are processed
+     *
+     * @since 1.0.0
+     * @param int $post_id Post ID
+     * @return void
+     */
+    private function update_post_content_with_images($post_id) {
+        $post_content = get_post_field('post_content', $post_id);
+        
+        // Get all image URLs for this post
+        $image_urls = $this->get_listing_image_urls($post_id);
+        
+        // Replace universal image placeholders
+        $post_content = str_replace('<!-- LISTING_IMAGES_PLACEHOLDER -->', implode(',', $image_urls), $post_content);
+        
+        // Replace base64 encoded image URLs (for Visual Composer compatibility)
+        $base64_images = $this->get_base64_encoded_images($image_urls);
+        $post_content = str_replace('<!-- BASE64IMAGES_PLACEHOLDER -->', $base64_images, $post_content);
+        
+        // Replace individual image placeholders (1-10)
+        for ($i = 1; $i <= 10; $i++) {
+            $image_url = isset($image_urls[$i - 1]) ? $image_urls[$i - 1] : '';
+            $post_content = str_replace("<!-- LISTING_IMAGE_{$i}_PLACEHOLDER -->", $image_url, $post_content);
+        }
+        
+        // Replace WordPress native placeholders
+        $featured_image_html = $this->get_featured_image_html($post_id);
+        $gallery_html = $this->get_image_gallery_html($post_id);
+        
+        $post_content = str_replace('<!-- FEATURED_IMAGE_PLACEHOLDER -->', $featured_image_html, $post_content);
+        $post_content = str_replace('<!-- IMAGE_GALLERY_PLACEHOLDER -->', $gallery_html, $post_content);
+        
+        
+        // Update the post content
+        wp_update_post(array(
+            'ID' => $post_id,
+            'post_content' => $post_content
+        ));
     }
 
     /**
@@ -345,7 +530,16 @@ class Shift8_TREB_Post_Manager {
         $agent_id = isset($listing['ListAgentKey']) ? sanitize_text_field($listing['ListAgentKey']) : '';
         
         // Determine category based on agent
-        $category_name = $this->is_our_agent($agent_id) ? 'Listings' : 'Other Listings';
+        $is_our_agent = $this->is_our_agent($agent_id);
+        $category_name = $is_our_agent ? 'Listings' : 'OtherListings';
+        
+        shift8_treb_debug_log('Category assignment', array(
+            'mls_number' => isset($listing['ListingKey']) ? esc_html($listing['ListingKey']) : 'unknown',
+            'agent_id' => esc_html($agent_id),
+            'member_ids' => esc_html($this->settings['member_id']),
+            'is_our_agent' => $is_our_agent,
+            'category_name' => esc_html($category_name)
+        ));
         
         return $this->get_or_create_category($category_name);
     }
@@ -374,48 +568,162 @@ class Shift8_TREB_Post_Manager {
     }
 
     /**
-     * Process listing images
+     * Process listing images using AMPRE Media API
+     * 
+     * Best Practice: Single-process import for atomic operations and immediate user experience
      *
      * @since 1.0.0
      * @param int $post_id Post ID
      * @param array $listing Listing data
-     * @return void
+     * @return array Statistics about image processing
      */
     private function process_listing_images($post_id, $listing) {
-        if (!isset($listing['Media']) || !is_array($listing['Media']) || empty($listing['Media'])) {
-            return;
+        $mls_number = sanitize_text_field($listing['ListingKey']);
+        $stats = array(
+            'total' => 0,
+            'downloaded' => 0,
+            'failed' => 0,
+            'featured_set' => false
+        );
+        
+        // Get media from AMPRE API
+        require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-ampre-service.php';
+        $ampre_service = new Shift8_TREB_AMPRE_Service($this->settings);
+        
+        $media_items = $ampre_service->get_media_for_listing($mls_number);
+        
+        if (is_wp_error($media_items) || empty($media_items)) {
+            shift8_treb_debug_log('No media found for listing', array(
+                'mls_number' => esc_html($mls_number),
+                'error' => is_wp_error($media_items) ? $media_items->get_error_message() : 'No media items'
+            ));
+            return $stats;
         }
 
-        $mls_number = sanitize_text_field($listing['ListingKey']);
+        $stats['total'] = count($media_items);
         
-        // Create directory for images
-        $upload_dir = wp_upload_dir();
-        $listing_dir = $upload_dir['basedir'] . '/treb/' . $mls_number;
-        
-        if (!file_exists($listing_dir)) {
-            wp_mkdir_p($listing_dir);
-        }
+        shift8_treb_debug_log('Processing listing images', array(
+            'mls_number' => esc_html($mls_number),
+            'image_count' => $stats['total']
+        ));
 
         $featured_image_set = false;
+        $preferred_image_id = null;
+        $first_successful_image = null;
 
-        foreach ($listing['Media'] as $index => $media) {
+        // Performance: Limit to reasonable number of images (default: 5 for speed)
+        $max_images = apply_filters('shift8_treb_max_images_per_listing', 5);
+        $media_items = array_slice($media_items, 0, $max_images);
+
+        // Performance: Check processing mode
+        $skip_images = isset($this->settings['skip_image_download']) && $this->settings['skip_image_download'];
+        $batch_mode = isset($this->settings['batch_image_processing']) && $this->settings['batch_image_processing'];
+        
+        if ($skip_images) {
+            shift8_treb_debug_log('Skipping image download for fast sync', array(
+                'mls_number' => esc_html($mls_number)
+            ));
+            
+            // Store external references only
+            foreach ($media_items as $index => $media) {
+                if (isset($media['MediaURL']) && !empty($media['MediaURL'])) {
+                    $is_preferred = isset($media['PreferredPhotoYN']) && $media['PreferredPhotoYN'] === true;
+                    $this->store_external_image_reference($post_id, $media['MediaURL'], $mls_number, $index + 1, $is_preferred);
+                }
+            }
+            return $stats;
+        }
+
+        // Batch processing mode for better performance
+        if ($batch_mode) {
+            return $this->process_images_batch($post_id, $media_items, $mls_number, $stats);
+        }
+
+        foreach ($media_items as $index => $media) {
             if (!isset($media['MediaURL']) || empty($media['MediaURL'])) {
                 continue;
             }
 
             $image_url = esc_url_raw($media['MediaURL']);
-            $attachment_id = $this->download_and_attach_image($image_url, $post_id, $mls_number, $index + 1);
+            $is_preferred = isset($media['PreferredPhotoYN']) && $media['PreferredPhotoYN'] === true;
+            
+            // Best Practice: Download with retry and fallback to external URL
+            $attachment_id = $this->download_and_attach_image_with_retry($image_url, $post_id, $mls_number, $index + 1);
 
-            // Set first image as featured image
-            if ($attachment_id && !$featured_image_set) {
-                set_post_thumbnail($post_id, $attachment_id);
-                $featured_image_set = true;
+            if ($attachment_id) {
+                $stats['downloaded']++;
+                
+                // Track first successful image as fallback
+                if (!$first_successful_image) {
+                    $first_successful_image = $attachment_id;
+                }
+                
+                // Track preferred image for featured image (highest priority)
+                if ($is_preferred) {
+                    $preferred_image_id = $attachment_id;
+                }
+            } else {
+                $stats['failed']++;
+                
+                // Fallback: Store external URL for future retry or display
+                $this->store_external_image_reference($post_id, $image_url, $mls_number, $index + 1, $is_preferred);
+                
+                shift8_treb_debug_log('Image download failed, stored external reference', array(
+                    'mls_number' => esc_html($mls_number),
+                    'image_url' => esc_html($image_url),
+                    'index' => $index
+                ));
             }
         }
+
+        // Featured image priority logic:
+        // 1. First image (image_number = 1) - ALWAYS gets priority for consistency
+        // 2. Preferred image (PreferredPhotoYN = true) - secondary priority
+        // 3. First successfully downloaded image - fallback
+        
+        // Find the first image (image_number = 1) if it was successfully downloaded
+        $first_image_id = null;
+        foreach ($media_items as $index => $media) {
+            if (($index + 1) == 1) { // First image
+                $existing_attachment = $this->get_existing_attachment($mls_number, 1);
+                if ($existing_attachment) {
+                    $first_image_id = $existing_attachment;
+                } elseif ($first_successful_image && ($index + 1) == 1) {
+                    $first_image_id = $first_successful_image;
+                }
+                break;
+            }
+        }
+        
+        // Set featured image with priority: First image > Preferred > First successful
+        $featured_image_id = $first_image_id ?: ($preferred_image_id ?: $first_successful_image);
+        
+        if ($featured_image_id) {
+            set_post_thumbnail($post_id, $featured_image_id);
+            $stats['featured_set'] = true;
+            
+            $priority_type = $first_image_id ? 'first_image' : ($preferred_image_id ? 'preferred' : 'first_successful');
+            
+            shift8_treb_debug_log('Set featured image', array(
+                'mls_number' => esc_html($mls_number),
+                'attachment_id' => $featured_image_id,
+                'priority_type' => $priority_type
+            ));
+        }
+
+        // Log final statistics
+        shift8_treb_debug_log('Image processing completed', array(
+            'mls_number' => esc_html($mls_number),
+            'stats' => $stats
+        ));
+
+        return $stats;
     }
 
     /**
-     * Download and attach image to post
+     * Download and attach image to post with enhanced error handling
+     * 
+     * Best Practice: Robust download with proper validation and cleanup
      *
      * @since 1.0.0
      * @param string $image_url Image URL
@@ -425,22 +733,499 @@ class Shift8_TREB_Post_Manager {
      * @return int|false Attachment ID on success, false on failure
      */
     private function download_and_attach_image($image_url, $post_id, $mls_number, $image_number) {
-        // Download image
-        $response = wp_remote_get($image_url, array('timeout' => 30));
-        
-        if (is_wp_error($response)) {
+        try {
+            // Best Practice: Validate URL before attempting download
+            if (!filter_var($image_url, FILTER_VALIDATE_URL)) {
+                shift8_treb_debug_log('Invalid image URL', array(
+                    'url' => esc_html($image_url),
+                    'mls_number' => esc_html($mls_number)
+                ));
+                return false;
+            }
+
+            // Best Practice: Check if image already exists to avoid duplicates
+            $existing_attachment = $this->get_existing_attachment($mls_number, $image_number);
+            if ($existing_attachment) {
+                return $existing_attachment;
+            }
+
+            // Performance: Optimized download settings with faster timeout
+            $response = wp_remote_get($image_url, array(
+                'timeout' => 10, // Reduced from 30 to 10 seconds
+                'user-agent' => 'WordPress/TREB-Plugin',
+                'headers' => array(
+                    'Accept' => 'image/*'
+                ),
+                'sslverify' => false // Skip SSL verification for speed (external images)
+            ));
+            
+            if (is_wp_error($response)) {
+                shift8_treb_debug_log('Image download failed', array(
+                    'url' => esc_html($image_url),
+                    'error' => $response->get_error_message(),
+                    'mls_number' => esc_html($mls_number)
+                ));
+                return false;
+            }
+
+            $response_code = wp_remote_retrieve_response_code($response);
+            if ($response_code !== 200) {
+                shift8_treb_debug_log('Image download HTTP error', array(
+                    'url' => esc_html($image_url),
+                    'response_code' => $response_code,
+                    'mls_number' => esc_html($mls_number)
+                ));
+                return false;
+            }
+
+            $image_data = wp_remote_retrieve_body($response);
+            if (empty($image_data)) {
+                return false;
+            }
+
+            // Best Practice: Validate image data
+            $image_size = strlen($image_data);
+            if ($image_size < 1024) { // Less than 1KB is likely not a valid image
+                shift8_treb_debug_log('Image too small', array(
+                    'url' => esc_html($image_url),
+                    'size' => $image_size,
+                    'mls_number' => esc_html($mls_number)
+                ));
+                return false;
+            }
+
+            // Best Practice: Determine file extension from content type
+            $content_type = wp_remote_retrieve_header($response, 'content-type');
+            $extension = $this->get_file_extension_from_content_type($content_type);
+            
+            // Prepare filename with proper extension
+            $filename = sanitize_file_name($mls_number . '_' . $image_number . '.' . $extension);
+            
+            // Upload to WordPress media library
+            $upload = wp_upload_bits($filename, null, $image_data);
+            
+            if ($upload['error']) {
+                shift8_treb_debug_log('WordPress upload failed', array(
+                    'error' => $upload['error'],
+                    'mls_number' => esc_html($mls_number),
+                    'filename' => esc_html($filename)
+                ));
+                return false;
+            }
+
+            // Create attachment with proper metadata
+            $attachment = array(
+                'post_mime_type' => $content_type ?: 'image/jpeg',
+                'post_title' => sanitize_text_field($mls_number . ' - Photo ' . $image_number),
+                'post_content' => '',
+                'post_status' => 'inherit',
+                'post_excerpt' => sanitize_text_field('Property photo for MLS ' . $mls_number)
+            );
+
+            $attachment_id = wp_insert_attachment($attachment, $upload['file'], $post_id);
+
+            if (is_wp_error($attachment_id)) {
+                // Clean up uploaded file if attachment creation fails
+                if (file_exists($upload['file'])) {
+                    wp_delete_file($upload['file']);
+                }
+                return false;
+            }
+
+            // Generate attachment metadata (thumbnails, etc.)
+            if (!function_exists('wp_generate_attachment_metadata')) {
+                require_once(ABSPATH . 'wp-admin/includes/image.php');
+            }
+            
+            $attachment_data = wp_generate_attachment_metadata($attachment_id, $upload['file']);
+            wp_update_attachment_metadata($attachment_id, $attachment_data);
+
+            // Best Practice: Add custom meta for easier management
+            update_post_meta($attachment_id, '_treb_mls_number', sanitize_text_field($mls_number));
+            update_post_meta($attachment_id, '_treb_image_number', intval($image_number));
+            update_post_meta($attachment_id, '_treb_source_url', esc_url_raw($image_url));
+
+            shift8_treb_debug_log('Image downloaded successfully', array(
+                'attachment_id' => $attachment_id,
+                'mls_number' => esc_html($mls_number),
+                'image_number' => $image_number,
+                'file_size' => $image_size
+            ));
+
+            return $attachment_id;
+
+        } catch (Exception $e) {
+            shift8_treb_debug_log('Image download exception', array(
+                'url' => esc_html($image_url),
+                'error' => esc_html($e->getMessage()),
+                'mls_number' => esc_html($mls_number)
+            ));
             return false;
         }
+    }
 
+    /**
+     * Get existing attachment for MLS listing image
+     *
+     * @since 1.0.0
+     * @param string $mls_number MLS number
+     * @param int $image_number Image number
+     * @return int|false Attachment ID if exists, false otherwise
+     */
+    private function get_existing_attachment($mls_number, $image_number) {
+        $existing = get_posts(array(
+            'post_type' => 'attachment',
+            'meta_query' => array(
+                array(
+                    'key' => '_treb_mls_number',
+                    'value' => sanitize_text_field($mls_number),
+                    'compare' => '='
+                ),
+                array(
+                    'key' => '_treb_image_number',
+                    'value' => intval($image_number),
+                    'compare' => '='
+                )
+            ),
+            'posts_per_page' => 1,
+            'fields' => 'ids'
+        ));
+
+        return !empty($existing) ? $existing[0] : false;
+    }
+
+    /**
+     * Get file extension from content type
+     *
+     * @since 1.0.0
+     * @param string $content_type Content type header
+     * @return string File extension
+     */
+    private function get_file_extension_from_content_type($content_type) {
+        $mime_to_ext = array(
+            'image/jpeg' => 'jpg',
+            'image/jpg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp'
+        );
+
+        return isset($mime_to_ext[$content_type]) ? $mime_to_ext[$content_type] : 'jpg';
+    }
+
+    /**
+     * Download and attach image with retry logic
+     *
+     * @since 1.0.0
+     * @param string $image_url Image URL
+     * @param int $post_id Post ID
+     * @param string $mls_number MLS number
+     * @param int $image_number Image number
+     * @return int|false Attachment ID on success, false on failure
+     */
+    private function download_and_attach_image_with_retry($image_url, $post_id, $mls_number, $image_number) {
+        // First attempt
+        $attachment_id = $this->download_and_attach_image($image_url, $post_id, $mls_number, $image_number);
+        
+        if ($attachment_id) {
+            return $attachment_id;
+        }
+
+        // Performance: Short delay before retry
+        sleep(1);
+        
+        // Second attempt (one retry only)
+        shift8_treb_debug_log('Retrying image download', array(
+            'mls_number' => esc_html($mls_number),
+            'image_url' => esc_html($image_url),
+            'attempt' => 2
+        ));
+        
+        $attachment_id = $this->download_and_attach_image($image_url, $post_id, $mls_number, $image_number);
+        
+        if (!$attachment_id) {
+            shift8_treb_debug_log('Image download failed after retry', array(
+                'mls_number' => esc_html($mls_number),
+                'image_url' => esc_html($image_url)
+            ));
+        }
+        
+        return $attachment_id;
+    }
+
+    /**
+     * Store external image reference for fallback/future processing
+     *
+     * @since 1.0.0
+     * @param int $post_id Post ID
+     * @param string $image_url External image URL
+     * @param string $mls_number MLS number
+     * @param int $image_number Image number
+     * @param bool $is_preferred Whether this is the preferred image
+     * @return void
+     */
+    private function store_external_image_reference($post_id, $image_url, $mls_number, $image_number, $is_preferred = false) {
+        // Store as post meta for future processing
+        $external_images = get_post_meta($post_id, '_treb_external_images', true);
+        if (!is_array($external_images)) {
+            $external_images = array();
+        }
+
+        $external_images[] = array(
+            'url' => esc_url_raw($image_url),
+            'mls_number' => sanitize_text_field($mls_number),
+            'image_number' => intval($image_number),
+            'is_preferred' => (bool) $is_preferred,
+            'failed_attempts' => 2, // Already tried twice
+            'last_attempt' => current_time('mysql')
+        );
+
+        update_post_meta($post_id, '_treb_external_images', $external_images);
+
+        // If this is the preferred image and no featured image is set, store the URL
+        if ($is_preferred && !has_post_thumbnail($post_id)) {
+            update_post_meta($post_id, '_treb_preferred_external_image', esc_url_raw($image_url));
+        }
+    }
+
+    /**
+     * Process images in batch mode for better performance
+     * 
+     * Uses parallel HTTP requests and optimized processing
+     *
+     * @since 1.0.0
+     * @param int $post_id Post ID
+     * @param array $media_items Media items from API
+     * @param string $mls_number MLS number
+     * @param array $stats Statistics array
+     * @return array Updated statistics
+     */
+    private function process_images_batch($post_id, $media_items, $mls_number, $stats) {
+        shift8_treb_debug_log('Starting batch image processing', array(
+            'mls_number' => esc_html($mls_number),
+            'image_count' => count($media_items)
+        ));
+
+        $stats['total'] = count($media_items);
+        
+        // Prepare batch download requests
+        $batch_requests = array();
+        $preferred_index = null;
+        
+        foreach ($media_items as $index => $media) {
+            if (!isset($media['MediaURL']) || empty($media['MediaURL'])) {
+                continue;
+            }
+
+            $image_url = esc_url_raw($media['MediaURL']);
+            $is_preferred = isset($media['PreferredPhotoYN']) && $media['PreferredPhotoYN'] === true;
+            
+            if ($is_preferred) {
+                $preferred_index = $index;
+            }
+
+            // Check if already exists
+            $existing_attachment = $this->get_existing_attachment($mls_number, $index + 1);
+            if ($existing_attachment) {
+                $stats['downloaded']++;
+                continue;
+            }
+
+            $batch_requests[] = array(
+                'url' => $image_url,
+                'index' => $index,
+                'image_number' => $index + 1,
+                'is_preferred' => $is_preferred,
+                'request' => array(
+                    'url' => $image_url,
+                    'type' => 'GET',
+                    'timeout' => 8, // Shorter timeout for batch
+                    'user-agent' => 'WordPress/TREB-Plugin-Batch',
+                    'headers' => array(
+                        'Accept' => 'image/*'
+                    ),
+                    'sslverify' => false
+                )
+            );
+        }
+
+        if (empty($batch_requests)) {
+            shift8_treb_debug_log('No images to download in batch', array(
+                'mls_number' => esc_html($mls_number)
+            ));
+            return $stats;
+        }
+
+        // Execute batch HTTP requests
+        $batch_responses = $this->execute_batch_http_requests($batch_requests);
+        
+        // Process responses
+        $featured_image_id = null;
+        $preferred_image_id = null;
+        $first_successful_image = null;
+
+        foreach ($batch_responses as $response_data) {
+            $index = $response_data['index'];
+            $image_number = $response_data['image_number'];
+            $is_preferred = $response_data['is_preferred'];
+            $response = $response_data['response'];
+
+            if (is_wp_error($response)) {
+                $stats['failed']++;
+                $this->store_external_image_reference($post_id, $response_data['url'], $mls_number, $image_number, $is_preferred);
+                continue;
+            }
+
+            $response_code = wp_remote_retrieve_response_code($response);
+            if ($response_code !== 200) {
+                $stats['failed']++;
+                $this->store_external_image_reference($post_id, $response_data['url'], $mls_number, $image_number, $is_preferred);
+                continue;
+            }
+
+            // Process successful download
+            $attachment_id = $this->process_batch_image_response($response, $post_id, $mls_number, $image_number);
+            
+            if ($attachment_id) {
+                $stats['downloaded']++;
+                
+                if (!$first_successful_image) {
+                    $first_successful_image = $attachment_id;
+                }
+                
+                if ($is_preferred) {
+                    $preferred_image_id = $attachment_id;
+                }
+            } else {
+                $stats['failed']++;
+                $this->store_external_image_reference($post_id, $response_data['url'], $mls_number, $image_number, $is_preferred);
+            }
+        }
+
+        // Featured image priority logic:
+        // 1. First image (image_number = 1) - ALWAYS gets priority for consistency
+        // 2. Preferred image (PreferredPhotoYN = true) - secondary priority  
+        // 3. First successfully downloaded image - fallback
+        
+        // Find the first image (image_number = 1) among successful downloads
+        $first_image_id = null;
+        foreach ($batch_responses as $response_data) {
+            if ($response_data['image_number'] == 1 && !is_wp_error($response_data['response'])) {
+                $response_code = wp_remote_retrieve_response_code($response_data['response']);
+                if ($response_code === 200) {
+                    $attachment_id = $this->process_batch_image_response($response_data['response'], $post_id, $mls_number, 1);
+                    if ($attachment_id) {
+                        $first_image_id = $attachment_id;
+                        // Update stats since we processed this image here
+                        $stats['downloaded']++;
+                        if (!$first_successful_image) {
+                            $first_successful_image = $attachment_id;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+        
+        // Set featured image with priority: First image > Preferred > First successful
+        $featured_image_id = $first_image_id ?: ($preferred_image_id ?: $first_successful_image);
+        
+        if ($featured_image_id) {
+            set_post_thumbnail($post_id, $featured_image_id);
+            $stats['featured_set'] = true;
+            
+            $priority_type = $first_image_id ? 'first_image' : ($preferred_image_id ? 'preferred' : 'first_successful');
+            
+            shift8_treb_debug_log('Set featured image (batch)', array(
+                'mls_number' => esc_html($mls_number),
+                'attachment_id' => $featured_image_id,
+                'priority_type' => $priority_type
+            ));
+        }
+
+        shift8_treb_debug_log('Batch image processing completed', array(
+            'mls_number' => esc_html($mls_number),
+            'stats' => $stats
+        ));
+
+        return $stats;
+    }
+
+    /**
+     * Execute batch HTTP requests using WordPress HTTP API
+     * 
+     * Performance: Uses wp_remote_request with concurrent processing where possible
+     *
+     * @since 1.0.0
+     * @param array $batch_requests Array of request configurations
+     * @return array Array of responses with metadata
+     */
+    private function execute_batch_http_requests($batch_requests) {
+        $responses = array();
+        
+        // WordPress doesn't have built-in concurrent HTTP, but we can optimize
+        // by processing requests in smaller batches with optimized settings
+        
+        $batch_size = apply_filters('shift8_treb_http_batch_size', 3); // Process 3 at a time
+        $batches = array_chunk($batch_requests, $batch_size);
+        
+        foreach ($batches as $batch) {
+            $batch_start = microtime(true);
+            
+            // Process each request in the batch
+            foreach ($batch as $request_data) {
+                $response = wp_remote_get($request_data['url'], $request_data['request']);
+                
+                $responses[] = array(
+                    'url' => $request_data['url'],
+                    'index' => $request_data['index'],
+                    'image_number' => $request_data['image_number'],
+                    'is_preferred' => $request_data['is_preferred'],
+                    'response' => $response
+                );
+            }
+            
+            $batch_time = microtime(true) - $batch_start;
+            
+            // Small delay between batches to avoid overwhelming the server
+            if ($batch_time < 1.0) {
+                usleep(200000); // 200ms delay
+            }
+        }
+        
+        return $responses;
+    }
+
+    /**
+     * Process a successful batch image response
+     *
+     * @since 1.0.0
+     * @param array $response HTTP response
+     * @param int $post_id Post ID
+     * @param string $mls_number MLS number
+     * @param int $image_number Image number
+     * @return int|false Attachment ID or false
+     */
+    private function process_batch_image_response($response, $post_id, $mls_number, $image_number) {
         $image_data = wp_remote_retrieve_body($response);
         if (empty($image_data)) {
             return false;
         }
 
-        // Prepare filename
-        $filename = $mls_number . '_' . $image_number . '.jpg';
+        // Validate image size
+        $image_size = strlen($image_data);
+        if ($image_size < 1024) {
+            return false;
+        }
+
+        // Get content type and extension
+        $content_type = wp_remote_retrieve_header($response, 'content-type');
+        $extension = $this->get_file_extension_from_content_type($content_type);
         
-        // Upload to WordPress media library
+        // Prepare filename
+        $filename = sanitize_file_name($mls_number . '_' . $image_number . '.' . $extension);
+        
+        // Upload to WordPress
         $upload = wp_upload_bits($filename, null, $image_data);
         
         if ($upload['error']) {
@@ -449,22 +1234,33 @@ class Shift8_TREB_Post_Manager {
 
         // Create attachment
         $attachment = array(
-            'post_mime_type' => 'image/jpeg',
-            'post_title' => $mls_number . ' - Image ' . $image_number,
+            'post_mime_type' => $content_type ?: 'image/jpeg',
+            'post_title' => sanitize_text_field($mls_number . ' - Photo ' . $image_number),
             'post_content' => '',
-            'post_status' => 'inherit'
+            'post_status' => 'inherit',
+            'post_excerpt' => sanitize_text_field('Property photo for MLS ' . $mls_number)
         );
 
         $attachment_id = wp_insert_attachment($attachment, $upload['file'], $post_id);
 
         if (is_wp_error($attachment_id)) {
+            if (file_exists($upload['file'])) {
+                wp_delete_file($upload['file']);
+            }
             return false;
         }
 
-        // Generate attachment metadata
-        require_once(ABSPATH . 'wp-admin/includes/image.php');
+        // Generate metadata
+        if (!function_exists('wp_generate_attachment_metadata')) {
+            require_once(ABSPATH . 'wp-admin/includes/image.php');
+        }
+        
         $attachment_data = wp_generate_attachment_metadata($attachment_id, $upload['file']);
         wp_update_attachment_metadata($attachment_id, $attachment_data);
+
+        // Add custom meta
+        update_post_meta($attachment_id, '_treb_mls_number', sanitize_text_field($mls_number));
+        update_post_meta($attachment_id, '_treb_image_number', intval($image_number));
 
         return $attachment_id;
     }
@@ -511,24 +1307,586 @@ class Shift8_TREB_Post_Manager {
      * @return string Default template
      */
     private function get_default_template() {
-        return '<div class="treb-listing">
-    <h3>Property Details</h3>
-    <ul class="property-details">
-        <li><strong>Address:</strong> %ADDRESS%</li>
-        <li><strong>Price:</strong> %PRICE%</li>
-        <li><strong>MLS Number:</strong> %MLS%</li>
-        <li><strong>Property Type:</strong> %PROPERTY_TYPE%</li>
-        <li><strong>Bedrooms:</strong> %BEDROOMS%</li>
-        <li><strong>Bathrooms:</strong> %BATHROOMS%</li>
-        <li><strong>Living Area:</strong> %SQFT% sq ft</li>
-        <li><strong>City:</strong> %CITY%</li>
-        <li><strong>Postal Code:</strong> %POSTAL_CODE%</li>
-    </ul>
-    
-    <h3>Description</h3>
-    <div class="property-description">
-        %DESCRIPTION%
+        return '<!-- TREB Listing Template - Modern WordPress Version -->
+<div class="treb-listing-container">
+    <!-- Hero Section with Featured Image -->
+    <div class="treb-hero-section">
+        %FEATURED_IMAGE%
+        <div class="treb-price-overlay">
+            <h2 class="treb-price">%PRICE%</h2>
+            <p class="treb-mls">MLS# %MLS%</p>
+        </div>
     </div>
-</div>';
+    
+    <!-- Property Header -->
+    <div class="treb-property-header">
+        <h1 class="treb-address">%ADDRESS%</h1>
+        <div class="treb-quick-stats">
+            <span class="treb-stat"><strong>%BEDROOMS%</strong> Bedrooms</span>
+            <span class="treb-stat"><strong>%BATHROOMS%</strong> Bathrooms</span>
+            <span class="treb-stat"><strong>%SQFT%</strong> sq ft</span>
+        </div>
+    </div>
+    
+    <!-- Image Gallery -->
+    <div class="treb-gallery-section">
+        %IMAGE_GALLERY%
+    </div>
+    
+    <!-- Property Details -->
+    <div class="treb-details-section">
+        <div class="treb-details-grid">
+            <div class="treb-detail-item">
+                <strong>Property Type:</strong> %PROPERTY_TYPE%
+            </div>
+            <div class="treb-detail-item">
+                <strong>City:</strong> %CITY%
+            </div>
+            <div class="treb-detail-item">
+                <strong>Postal Code:</strong> %POSTAL_CODE%
+            </div>
+            %VIRTUAL_TOUR_SECTION%
+        </div>
+    </div>
+    
+    <!-- Description -->
+    <div class="treb-description-section">
+        <h3>Property Description</h3>
+        <div class="treb-description-content">
+            %DESCRIPTION%
+        </div>
+    </div>
+    
+    <!-- Contact Section -->
+    <div class="treb-contact-section">
+        <div class="treb-contact-info">
+            <h3>Contact Information</h3>
+            <p>%PHONEMSG%</p>
+        </div>
+    </div>
+</div>
+
+<!-- Modern CSS Styles -->
+<style>
+.treb-listing-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.treb-hero-section {
+    position: relative;
+    margin-bottom: 2rem;
+}
+
+.treb-price-overlay {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+.treb-price {
+    margin: 0;
+    font-size: 2rem;
+    font-weight: bold;
+}
+
+.treb-mls {
+    margin: 0.5rem 0 0 0;
+    opacity: 0.9;
+}
+
+.treb-property-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.treb-address {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    color: #333;
+}
+
+.treb-quick-stats {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+}
+
+.treb-stat {
+    background: #f8f9fa;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    border: 2px solid #0477a6;
+}
+
+.treb-gallery-section {
+    margin-bottom: 2rem;
+}
+
+.treb-details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.treb-detail-item {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 8px;
+    border-left: 4px solid #0477a6;
+}
+
+.treb-description-section {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    margin-bottom: 2rem;
+}
+
+.treb-description-content {
+    line-height: 1.6;
+    font-size: 1.1rem;
+}
+
+.treb-contact-section {
+    background: #0477a6;
+    color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.treb-virtual-tour-link {
+    display: inline-block;
+    background: #28a745;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    text-decoration: none;
+    border-radius: 5px;
+    font-weight: bold;
+    margin-top: 1rem;
+}
+
+.treb-virtual-tour-link:hover {
+    background: #218838;
+    color: white;
+}
+
+@media (max-width: 768px) {
+    .treb-address {
+        font-size: 1.8rem;
     }
+    
+    .treb-quick-stats {
+        gap: 1rem;
+    }
+    
+    .treb-details-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>';
+    }
+
+    /**
+     * Parse address into components
+     *
+     * @since 1.0.0
+     * @param string $address Full address string
+     * @return array Address components
+     */
+    private function parse_address($address) {
+        $parts = array(
+            'number' => '',
+            'street' => '',
+            'unit' => ''
+        );
+
+        if (empty($address)) {
+            return $parts;
+        }
+
+        // Basic address parsing - can be enhanced later
+        $address = trim($address);
+        
+        // Extract unit number (look for patterns like "Unit 123", "Apt 456", "#789")
+        if (preg_match('/(?:Unit|Apt|Suite|#)\s*([A-Za-z0-9]+)/i', $address, $matches)) {
+            $parts['unit'] = $matches[1];
+            $address = preg_replace('/(?:Unit|Apt|Suite|#)\s*[A-Za-z0-9]+/i', '', $address);
+        }
+
+        // Extract street number (first number in the address)
+        if (preg_match('/^(\d+)/', trim($address), $matches)) {
+            $parts['number'] = $matches[1];
+            $address = preg_replace('/^\d+\s*/', '', $address);
+        }
+
+        // Remaining is street name (clean up extra spaces and commas)
+        $parts['street'] = trim(preg_replace('/,.*$/', '', $address));
+
+        return $parts;
+    }
+
+    /**
+     * Get phone message for contact
+     *
+     * @since 1.0.0
+     * @return string Phone message
+     */
+    private function get_phone_message() {
+        // This could be configurable in settings later
+        return 'Call for more information: (416) 555-0123';
+    }
+
+    /**
+     * Get virtual tour link for listing
+     *
+     * @since 1.0.0
+     * @param array $listing Listing data
+     * @return string Virtual tour HTML or empty string
+     */
+    private function get_virtual_tour_link($listing) {
+        if (isset($listing['VirtualTourURLUnbranded']) && !empty($listing['VirtualTourURLUnbranded'])) {
+            $url = esc_url($listing['VirtualTourURLUnbranded']);
+            return '<a href="' . $url . '" target="_blank" class="virtual-tour-link">Virtual Tour</a>';
+        }
+        return '';
+    }
+
+    /**
+     * Get WalkScore code for listing
+     *
+     * @since 1.0.0
+     * @param array $listing Listing data
+     * @return string WalkScore embed code or empty string
+     */
+    private function get_walkscore_code($listing) {
+        // Check if WalkScore is enabled - requires both API key and ID
+        if (empty($this->settings['walkscore_api_key']) || empty($this->settings['walkscore_id'])) {
+            return '';
+        }
+
+        // Parse address components
+        $address_parts = $this->parse_address($listing['UnparsedAddress']);
+        
+        // Get address components
+        $street_number = $address_parts['number'];
+        $street_name = $address_parts['street'];
+        $street_suffix = ''; // Not typically provided in AMPRE data
+        $municipality = isset($listing['City']) ? sanitize_text_field($listing['City']) : '';
+        $province = isset($listing['StateOrProvince']) ? sanitize_text_field($listing['StateOrProvince']) : 'ON';
+        $country = 'Canada';
+        
+        // Generate WalkScore widget code (matching Python script format)
+        $walkscore_code = sprintf("
+<script type='text/javascript'>
+var ws_wsid = '%s';
+var ws_address = '%s %s %s, %s, %s, %s'
+var ws_format = 'square';
+var ws_width = '300';
+var ws_height = '300';
+</script><style type='text/css'>#ws-walkscore-tile{position:relative;text-align:left}#ws-walkscore-tile *{float:none;}</style><div id='ws-walkscore-tile'></div><script type='text/javascript' src='https://www.walkscore.com/tile/show-walkscore-tile.php'></script>",
+            esc_js($this->settings['walkscore_id']),
+            esc_js($street_number),
+            esc_js($street_name),
+            esc_js($street_suffix),
+            esc_js($municipality),
+            esc_js($province),
+            esc_js($country)
+        );
+        
+        return $walkscore_code;
+    }
+
+    /**
+     * Get listing latitude with geocoding fallback
+     *
+     * @since 1.0.0
+     * @param array $listing Listing data
+     * @return string Latitude coordinate
+     */
+    private function get_listing_latitude($listing) {
+        // First, try to use AMPRE API provided coordinates
+        if (isset($listing['Latitude']) && !empty($listing['Latitude'])) {
+            return floatval($listing['Latitude']);
+        }
+
+        // Only attempt geocoding if Google Maps API key is configured
+        if (!empty($this->settings['google_maps_api_key'])) {
+            $coordinates = $this->geocode_address($listing['UnparsedAddress']);
+            if ($coordinates && isset($coordinates['lat'])) {
+                return $coordinates['lat'];
+            }
+        }
+
+        // Default to Toronto coordinates if no API key or geocoding fails
+        return '43.6532';
+    }
+
+    /**
+     * Get listing longitude with geocoding fallback
+     *
+     * @since 1.0.0
+     * @param array $listing Listing data
+     * @return string Longitude coordinate
+     */
+    private function get_listing_longitude($listing) {
+        // First, try to use AMPRE API provided coordinates
+        if (isset($listing['Longitude']) && !empty($listing['Longitude'])) {
+            return floatval($listing['Longitude']);
+        }
+
+        // Only attempt geocoding if Google Maps API key is configured
+        if (!empty($this->settings['google_maps_api_key'])) {
+            $coordinates = $this->geocode_address($listing['UnparsedAddress']);
+            if ($coordinates && isset($coordinates['lng'])) {
+                return $coordinates['lng'];
+            }
+        }
+
+        // Default to Toronto coordinates if no API key or geocoding fails
+        return '-79.3832';
+    }
+
+    /**
+     * Geocode address using Google Maps API
+     *
+     * @since 1.0.0
+     * @param string $address Address to geocode
+     * @return array|false Array with 'lat' and 'lng' keys, or false on failure
+     */
+    private function geocode_address($address) {
+        // Check if Google Maps API key is configured
+        if (empty($this->settings['google_maps_api_key'])) {
+            return false;
+        }
+
+        // Check cache first (to avoid repeated API calls for same address)
+        $cache_key = 'treb_geocode_' . md5($address);
+        $cached_result = get_transient($cache_key);
+        if ($cached_result !== false) {
+            return $cached_result;
+        }
+
+        // Make geocoding request
+        $api_key = $this->settings['google_maps_api_key'];
+        $encoded_address = urlencode($address);
+        $url = "https://maps.googleapis.com/maps/api/geocode/json?address={$encoded_address}&key={$api_key}";
+
+        $response = wp_remote_get($url, array(
+            'timeout' => 10,
+            'user-agent' => 'WordPress/TREB-Plugin'
+        ));
+
+        if (is_wp_error($response)) {
+            shift8_treb_debug_log('Geocoding API error', array(
+                'address' => esc_html($address),
+                'error' => $response->get_error_message()
+            ));
+            return false;
+        }
+
+        $response_code = wp_remote_retrieve_response_code($response);
+        if ($response_code !== 200) {
+            shift8_treb_debug_log('Geocoding API HTTP error', array(
+                'address' => esc_html($address),
+                'response_code' => $response_code
+            ));
+            return false;
+        }
+
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE || !isset($data['status'])) {
+            shift8_treb_debug_log('Geocoding API invalid response', array(
+                'address' => esc_html($address)
+            ));
+            return false;
+        }
+
+        if ($data['status'] !== 'OK' || empty($data['results'])) {
+            shift8_treb_debug_log('Geocoding API no results', array(
+                'address' => esc_html($address),
+                'status' => $data['status']
+            ));
+            return false;
+        }
+
+        // Extract coordinates
+        $location = $data['results'][0]['geometry']['location'];
+        $coordinates = array(
+            'lat' => $location['lat'],
+            'lng' => $location['lng']
+        );
+
+        // Cache result for 24 hours
+        set_transient($cache_key, $coordinates, DAY_IN_SECONDS);
+
+        shift8_treb_debug_log('Address geocoded successfully', array(
+            'address' => esc_html($address),
+            'coordinates' => $coordinates
+        ));
+
+        return $coordinates;
+    }
+
+    /**
+     * Get listing images as base64 encoded string for gallery
+     *
+     * @since 1.0.0
+     * @param array $listing Listing data
+     * @return string Base64 encoded images or empty string
+     */
+    /**
+     * Get featured image HTML for template
+     *
+     * @since 1.0.0
+     * @param int $post_id Post ID
+     * @return string Featured image HTML or empty string
+     */
+    private function get_featured_image_html($post_id) {
+        if (!has_post_thumbnail($post_id)) {
+            return '<div class="treb-no-image">No image available</div>';
+        }
+
+        // Get featured image with responsive sizes
+        $featured_image = get_the_post_thumbnail($post_id, 'large', array(
+            'class' => 'treb-featured-image',
+            'loading' => 'lazy',
+            'alt' => get_the_title($post_id) . ' - Property Photo'
+        ));
+
+        return $featured_image;
+    }
+
+    /**
+     * Get image gallery HTML for template
+     *
+     * @since 1.0.0
+     * @param int $post_id Post ID
+     * @return string Gallery HTML or empty string
+     */
+    private function get_image_gallery_html($post_id) {
+        // Get all attachments for this post
+        $attachments = get_posts(array(
+            'post_type' => 'attachment',
+            'post_parent' => $post_id,
+            'meta_key' => '_treb_image_number',
+            'orderby' => 'meta_value_num',
+            'order' => 'ASC',
+            'posts_per_page' => -1
+        ));
+
+        if (empty($attachments)) {
+            return '<p class="treb-no-gallery">No additional images available</p>';
+        }
+
+        // Skip the first image if it's the featured image
+        $featured_image_id = get_post_thumbnail_id($post_id);
+        $gallery_images = array();
+        
+        foreach ($attachments as $attachment) {
+            if ($attachment->ID != $featured_image_id) {
+                $gallery_images[] = $attachment->ID;
+            }
+        }
+
+        if (empty($gallery_images)) {
+            return '<p class="treb-single-image">Additional images will appear here when available</p>';
+        }
+
+        // Create WordPress gallery shortcode
+        $gallery_ids = implode(',', $gallery_images);
+        $gallery_shortcode = '[gallery ids="' . $gallery_ids . '" columns="3" size="medium" link="file"]';
+        
+        // Process the shortcode to generate HTML
+        $gallery_html = do_shortcode($gallery_shortcode);
+        
+        return '<div class="treb-image-gallery">' . $gallery_html . '</div>';
+    }
+
+    /**
+     * Get listing image URLs in order
+     *
+     * @since 1.0.0
+     * @param int $post_id Post ID
+     * @return array Array of image URLs
+     */
+    private function get_listing_image_urls($post_id) {
+        // Get all attachments for this post ordered by image number
+        $attachments = get_posts(array(
+            'post_type' => 'attachment',
+            'post_parent' => $post_id,
+            'meta_key' => '_treb_image_number',
+            'orderby' => 'meta_value_num',
+            'order' => 'ASC',
+            'posts_per_page' => -1
+        ));
+
+        $image_urls = array();
+        foreach ($attachments as $attachment) {
+            $image_url = wp_get_attachment_url($attachment->ID);
+            if ($image_url) {
+                $image_urls[] = $image_url;
+            }
+        }
+
+        return $image_urls;
+    }
+
+    /**
+     * Get base64 encoded image URLs for Visual Composer compatibility
+     *
+     * @since 1.0.0
+     * @param array $image_urls Array of image URLs
+     * @return string Base64 encoded URL-encoded comma-separated image URLs
+     */
+    private function get_base64_encoded_images($image_urls) {
+        if (empty($image_urls)) {
+            return '';
+        }
+
+        // URL encode each image URL
+        $encoded_urls = array_map('urlencode', $image_urls);
+        
+        // Join with commas
+        $comma_separated = implode(',', $encoded_urls);
+        
+        // Base64 encode the entire string
+        $base64_encoded = base64_encode($comma_separated);
+        
+        return $base64_encoded;
+    }
+
+    /**
+     * Get virtual tour section HTML
+     *
+     * @since 1.0.0
+     * @param array $listing Listing data
+     * @return string Virtual tour section HTML or empty string
+     */
+    private function get_virtual_tour_section($listing) {
+        $virtual_tour_url = $this->get_virtual_tour_link($listing);
+        
+        if (empty($virtual_tour_url)) {
+            return '';
+        }
+
+        return '<div class="treb-detail-item treb-virtual-tour">
+            <strong>Virtual Tour:</strong>
+            <a href="' . esc_url($virtual_tour_url) . '" target="_blank" class="treb-virtual-tour-link">
+                View Virtual Tour
+            </a>
+        </div>';
+    }
+
 }

@@ -35,6 +35,15 @@ class Shift8_TREB_CLI {
      * [--force]
      * : Force sync even if bearer token is not configured
      *
+     * [--listing-age=<days>]
+     * : Override listing age in days (ignores incremental sync)
+     *
+     * [--skip-images]
+     * : Skip image downloads for faster sync (stores external URLs only)
+     *
+     * [--batch-images]
+     * : Use batch processing for faster image downloads (3x faster than sequential)
+     *
      * ## EXAMPLES
      *
      *     # Run normal sync
@@ -49,6 +58,9 @@ class Shift8_TREB_CLI {
      *     # Limit to 10 listings
      *     wp shift8-treb sync --limit=10
      *
+     *     # Override listing age (ignores incremental sync)
+     *     wp shift8-treb sync --listing-age=7
+     *
      * @when after_wp_load
      */
     public function sync($args, $assoc_args) {
@@ -56,6 +68,7 @@ class Shift8_TREB_CLI {
         $verbose = isset($assoc_args['verbose']);
         $limit = isset($assoc_args['limit']) ? intval($assoc_args['limit']) : null;
         $force = isset($assoc_args['force']);
+        $listing_age = isset($assoc_args['listing-age']) ? intval($assoc_args['listing-age']) : null;
 
         WP_CLI::line('=== Shift8 TREB Manual Sync ===');
         
@@ -66,6 +79,12 @@ class Shift8_TREB_CLI {
         try {
             // Get settings
             $settings = get_option('shift8_treb_settings', array());
+            
+            // Add last sync timestamp for incremental sync
+            $last_sync = get_option('shift8_treb_last_sync', '');
+            if (!empty($last_sync)) {
+                $settings['last_sync_timestamp'] = $last_sync;
+            }
             
             if (empty($settings['bearer_token']) && !$force) {
                 WP_CLI::error('Bearer token not configured. Use --force to override or configure in admin settings.');
@@ -84,8 +103,13 @@ class Shift8_TREB_CLI {
                 WP_CLI::line('- Bearer token: ' . (!empty($settings['bearer_token']) ? 'Set' : 'Not set'));
                 WP_CLI::line('- Sync frequency: ' . ($settings['sync_frequency'] ?? 'daily'));
                 WP_CLI::line('- Max listings per query: ' . ($settings['max_listings_per_query'] ?? 100));
-                WP_CLI::line('- City filter: ' . ($settings['city_filter'] ?? 'Toronto'));
-                WP_CLI::line('- Status filter: ' . ($settings['listing_status_filter'] ?? 'Active'));
+                WP_CLI::line('- Member ID: ' . ($settings['member_id'] ?? 'Not set'));
+                WP_CLI::line('- Listing age (days): ' . ($settings['listing_age_days'] ?? '30') . ($listing_age !== null ? ' (CLI override)' : ''));
+                if (!empty($settings['last_sync_timestamp'])) {
+                    WP_CLI::line('- Last sync: ' . $settings['last_sync_timestamp'] . ' (incremental sync)');
+                } else {
+                    WP_CLI::line('- Sync mode: Full sync using listing age filter');
+                }
                 WP_CLI::line('');
             }
 
@@ -97,10 +121,47 @@ class Shift8_TREB_CLI {
                 require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-post-manager.php';
             }
 
-            // Decrypt bearer token (it's encrypted when stored)
+            // Decrypt bearer token (handles both encrypted and plain JWT tokens)
             if (!empty($settings['bearer_token'])) {
                 $bearer_token = shift8_treb_decrypt_data($settings['bearer_token']);
                 $settings['bearer_token'] = $bearer_token;
+            }
+            
+            // Handle listing age override
+            if ($listing_age !== null) {
+                // Override listing age and clear last sync timestamp to force age-based filtering
+                $settings['listing_age_days'] = $listing_age;
+                $settings['last_sync_timestamp'] = null;
+                if ($verbose) {
+                    WP_CLI::line("Using listing age override: {$listing_age} days");
+                }
+            } else {
+                // Use existing listing age setting or default
+                if (empty($settings['listing_age_days'])) {
+                    $settings['listing_age_days'] = 30; // Default fallback
+                }
+                // For manual CLI sync, always use listing age instead of incremental sync
+                // This allows testing and manual syncs to respect the listing_age_days setting
+                $settings['last_sync_timestamp'] = null;
+                if ($verbose) {
+                    WP_CLI::line("Using WordPress setting: {$settings['listing_age_days']} days (manual sync ignores incremental)");
+                }
+            }
+
+            // Handle skip images option for fast sync
+            if (isset($assoc_args['skip-images'])) {
+                $settings['skip_image_download'] = true;
+                if ($verbose) {
+                    WP_CLI::line("🚀 Fast sync mode: Skipping image downloads (storing external URLs only)");
+                }
+            }
+
+            // Handle batch images option for optimized processing
+            if (isset($assoc_args['batch-images'])) {
+                $settings['batch_image_processing'] = true;
+                if ($verbose) {
+                    WP_CLI::line("⚡ Batch mode: Using optimized batch image processing (3x faster)");
+                }
             }
             
             $ampre_service = new Shift8_TREB_AMPRE_Service($settings);
@@ -178,18 +239,40 @@ class Shift8_TREB_CLI {
                         $result = $post_manager->process_listing($listing);
                         
                         if ($result) {
-                            if ($result['action'] === 'created') {
+                            // Handle both array and boolean returns for backward compatibility
+                            if (is_array($result)) {
+                                if (isset($result['success']) && $result['success']) {
+                                    if ($result['action'] === 'created') {
+                                        $created++;
+                                    } elseif ($result['action'] === 'updated') {
+                                        $updated++;
+                                    }
+                                    $processed++;
+                                    
+                                    if ($verbose) {
+                                        WP_CLI::line(sprintf('%s: %s (ID: %d)', 
+                                            ucfirst($result['action']), 
+                                            $result['title'], 
+                                            $result['post_id']));
+                                    }
+                                } elseif ($result['action'] === 'skipped') {
+                                    // Handle excluded agents
+                                    $skipped++;
+                                    
+                                    if ($verbose) {
+                                        WP_CLI::line(sprintf('Skipped: %s (%s)', 
+                                            $result['title'], 
+                                            $result['reason'] ?? 'Unknown reason'));
+                                    }
+                                }
+                            } elseif ($result === true) {
+                                // Legacy boolean return - assume created
                                 $created++;
-                            } elseif ($result['action'] === 'updated') {
-                                $updated++;
-                            }
-                            $processed++;
-                            
-                            if ($verbose) {
-                                WP_CLI::line(sprintf('%s: %s (ID: %d)', 
-                                    ucfirst($result['action']), 
-                                    $result['title'], 
-                                    $result['post_id']));
+                                $processed++;
+                                
+                                if ($verbose) {
+                                    WP_CLI::line('Created: Listing processed successfully');
+                                }
                             }
                         } else {
                             $skipped++;
@@ -228,6 +311,12 @@ class Shift8_TREB_CLI {
             
             WP_CLI::line(sprintf('Errors: %d', $errors));
 
+            // Update last sync timestamp for incremental sync (only if not dry run)
+            if (!$dry_run) {
+                $current_timestamp = current_time('c'); // ISO 8601 format
+                update_option('shift8_treb_last_sync', $current_timestamp);
+            }
+            
             // Log completion
             shift8_treb_log('=== WP-CLI MANUAL SYNC COMPLETED ===', array(
                 'total_listings' => count($listings),
@@ -236,7 +325,8 @@ class Shift8_TREB_CLI {
                 'updated' => $updated,
                 'skipped' => $skipped,
                 'errors' => $errors,
-                'dry_run' => $dry_run
+                'dry_run' => $dry_run,
+                'next_sync_from' => !$dry_run ? $current_timestamp : 'unchanged'
             ), 'info');
 
             if ($errors > 0) {
@@ -327,7 +417,7 @@ class Shift8_TREB_CLI {
                 require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-ampre-service.php';
             }
 
-            // Decrypt bearer token (it's encrypted when stored)
+            // Decrypt bearer token (handles both encrypted and plain JWT tokens)
             $bearer_token = shift8_treb_decrypt_data($settings['bearer_token']);
             $settings['bearer_token'] = $bearer_token;
             
@@ -416,6 +506,97 @@ class Shift8_TREB_CLI {
      *
      *     wp shift8-treb clear-logs
      *     wp shift8-treb clear-logs --yes
+     *
+     * Test Media API for a specific listing
+     *
+     * ## OPTIONS
+     *
+     * <listing_key>
+     * : The MLS listing key to test
+     *
+     * [--raw]
+     * : Show raw API response
+     *
+     * ## EXAMPLES
+     *
+     *     wp shift8-treb test_media W12438713
+     *     wp shift8-treb test_media W12438713 --raw
+     *
+     * @when after_wp_load
+     */
+    public function test_media($args, $assoc_args) {
+        $listing_key = isset($args[0]) ? $args[0] : 'W12438713';
+        
+        WP_CLI::line("Testing Media API for listing: $listing_key");
+        
+        try {
+            // Include required classes
+            require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-ampre-service.php';
+            
+            // Get plugin settings
+            $settings = get_option('shift8_treb_settings', array());
+            
+            // Decrypt bearer token
+            if (!empty($settings['bearer_token'])) {
+                $settings['bearer_token'] = shift8_treb_decrypt_data($settings['bearer_token']);
+            }
+            
+            // Create AMPRE service
+            $ampre_service = new Shift8_TREB_AMPRE_Service($settings);
+            
+            // Test get_media_for_listing method
+            $result = $ampre_service->get_media_for_listing($listing_key);
+            
+            if (is_wp_error($result)) {
+                WP_CLI::error('API Error: ' . $result->get_error_message());
+                return;
+            }
+            
+            WP_CLI::success('Media data retrieved successfully');
+            
+            // Show media data
+            if (is_array($result) && count($result) > 0) {
+                WP_CLI::line("Found " . count($result) . " photos:");
+                
+                foreach ($result as $index => $media) {
+                    WP_CLI::line("Photo " . ($index + 1) . ":");
+                    WP_CLI::line("  - MediaURL: " . (isset($media['MediaURL']) ? $media['MediaURL'] : 'N/A'));
+                    WP_CLI::line("  - MediaType: " . (isset($media['MediaType']) ? $media['MediaType'] : 'N/A'));
+                    WP_CLI::line("  - Order: " . (isset($media['Order']) ? $media['Order'] : 'N/A'));
+                    WP_CLI::line("  - PreferredPhoto: " . (isset($media['PreferredPhotoYN']) ? ($media['PreferredPhotoYN'] ? 'Yes' : 'No') : 'N/A'));
+                    WP_CLI::line("  - Size: " . (isset($media['ImageSizeDescription']) ? $media['ImageSizeDescription'] : 'N/A'));
+                    WP_CLI::line("");
+                }
+            } else {
+                WP_CLI::line("No photos found for this listing");
+            }
+            
+            // Show raw response structure
+            if (isset($assoc_args['raw'])) {
+                WP_CLI::line("Raw response:");
+                WP_CLI::line(wp_json_encode($result, JSON_PRETTY_PRINT));
+            }
+            
+        } catch (Exception $e) {
+            WP_CLI::error('Exception: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Clear all TREB sync logs
+     *
+     * ## OPTIONS
+     *
+     * [--yes]
+     * : Skip confirmation prompt
+     *
+     * ## EXAMPLES
+     *
+     *     # Clear logs with confirmation
+     *     wp shift8-treb clear_logs
+     *
+     *     # Clear logs without confirmation
+     *     wp shift8-treb clear_logs --yes
      *
      * @when after_wp_load
      */

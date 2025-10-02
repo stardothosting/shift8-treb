@@ -64,12 +64,8 @@ class AMPREServiceTest extends TestCase {
         $test_settings = array(
             'bearer_token' => 'test_bearer_token_12345',
             'max_listings_per_query' => 100,
-            'city_filter' => 'Toronto',
-            'listing_status_filter' => 'Active',
-            'property_type_filter' => 'Residential',
-            'agent_filter' => '1525',
-            'min_price' => '100000',
-            'max_price' => '2000000'
+            'member_id' => '1525',
+            'listing_age_days' => '30'
         );
         
         $this->ampre_service = new \Shift8_TREB_AMPRE_Service($test_settings);
@@ -268,14 +264,14 @@ class AMPREServiceTest extends TestCase {
         // Test that ContractStatus filter is included
         $this->assertStringContainsString("ContractStatus eq 'Available'", $params);
         
-        // Test that city filter is included
-        $this->assertStringContainsString("City eq 'Toronto'", $params);
-        
-        // Test that agent filter is included
-        $this->assertStringContainsString("ListAgentKey eq '1525'", $params);
+        // Test that listing age filter is included (30 days ago)
+        $this->assertStringContainsString("ModificationTimestamp ge", $params);
         
         // Test top parameter
         $this->assertStringContainsString('$top=100', $params);
+        
+        // Test ordering
+        $this->assertStringContainsString('$orderby=ModificationTimestamp,ListingKey', $params);
         
         // Test orderby parameter
         $this->assertStringContainsString('ModificationTimestamp', $params);
@@ -382,25 +378,37 @@ class AMPREServiceTest extends TestCase {
     /**
      * Test price filter building
      */
-    public function test_price_filter_building() {
-        // Create service with price filters
-        $price_settings = array(
+    public function test_listing_age_filter_building() {
+        // Create service with listing age filter
+        $age_settings = array(
             'bearer_token' => 'test_token',
-            'min_price' => '500000',
-            'max_price' => '1000000'
+            'listing_age_days' => '7'
         );
         
-        $price_service = new \Shift8_TREB_AMPRE_Service($price_settings);
+        $age_service = new \Shift8_TREB_AMPRE_Service($age_settings);
         
         // Use reflection to test private method
-        $reflection = new \ReflectionClass($price_service);
+        $reflection = new \ReflectionClass($age_service);
         $method = $reflection->getMethod('build_query_parameters');
         $method->setAccessible(true);
         
-        $params = $method->invoke($price_service);
+        $params = $method->invoke($age_service);
         
-        // Test that price filters are included
-        $this->assertStringContainsString('ListPrice ge 500000', $params);
-        $this->assertStringContainsString('ListPrice le 1000000', $params);
+        // Test that listing age filter is included
+        $this->assertStringContainsString('ModificationTimestamp ge', $params);
+        $this->assertStringContainsString('ContractStatus eq \'Available\'', $params);
+    }
+
+
+    /**
+     * Test API URL construction for different endpoints
+     */
+    public function test_api_endpoints() {
+        // Test that the service can handle different API endpoints
+        $reflection = new \ReflectionClass($this->ampre_service);
+        $constant = $reflection->getConstant('API_BASE_URL');
+        
+        $this->assertStringContainsString('query.ampre.ca/odata/', $constant, 'Should use correct AMPRE API base URL');
+        $this->assertStringEndsWith('/', $constant, 'Base URL should end with slash');
     }
 }

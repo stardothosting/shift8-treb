@@ -110,7 +110,9 @@ class Shift8_TREB_AMPRE_Service {
             $endpoint = 'Property?' . $query_params;
 
             shift8_treb_debug_log('Making AMPRE API request', array(
-                'endpoint' => esc_html($endpoint)
+                'endpoint' => esc_html($endpoint),
+                'full_url' => esc_html(self::API_BASE_URL . $endpoint),
+                'settings' => $this->settings
             ));
 
             $response = $this->make_request($endpoint);
@@ -188,29 +190,17 @@ class Shift8_TREB_AMPRE_Service {
 
         // Use ContractStatus instead of StandardStatus for available listings
         $filters[] = "ContractStatus eq 'Available'";
-
-        // City filter (e.g., 'Toronto')
-        if (!empty($this->settings['city_filter'])) {
-            $filters[] = "City eq '" . sanitize_text_field($this->settings['city_filter']) . "'";
-        }
-
-        // Property type filter
-        if (!empty($this->settings['property_type_filter'])) {
-            $filters[] = "PropertyType eq '" . sanitize_text_field($this->settings['property_type_filter']) . "'";
-        }
-
-        // Price range filters
-        if (!empty($this->settings['min_price']) && intval($this->settings['min_price']) > 0) {
-            $filters[] = "ListPrice ge " . intval($this->settings['min_price']);
-        }
-
-        if (!empty($this->settings['max_price']) && intval($this->settings['max_price']) > 0) {
-            $filters[] = "ListPrice le " . intval($this->settings['max_price']);
-        }
-
-        // Agent filter (ListAgentKey)
-        if (!empty($this->settings['agent_filter'])) {
-            $filters[] = "ListAgentKey eq '" . sanitize_text_field($this->settings['agent_filter']) . "'";
+        
+        // Add ModificationTimestamp filter for incremental sync
+        if (!empty($this->settings['last_sync_timestamp'])) {
+            $filters[] = "ModificationTimestamp ge " . $this->settings['last_sync_timestamp'];
+        } else {
+            // If no last sync timestamp, use listing age days filter
+            if (!empty($this->settings['listing_age_days'])) {
+                $days_ago = intval($this->settings['listing_age_days']);
+                $cutoff_date = date('Y-m-d\TH:i:s\Z', strtotime("-{$days_ago} days"));
+                $filters[] = "ModificationTimestamp ge " . $cutoff_date;
+            }
         }
 
         // Combine filters
@@ -224,11 +214,10 @@ class Shift8_TREB_AMPRE_Service {
             $params[] = '$top=' . $max_listings;
         }
 
-        // Order by modification timestamp (newest first)
-        $params[] = '$orderby=ModificationTimestamp desc';
+        // Order by modification timestamp and listing key (as per AMPRE documentation)
+        $params[] = '$orderby=ModificationTimestamp,ListingKey';
 
-        // Expand media data for images
-        $params[] = '$expand=Media';
+        // Note: Media is not expandable on Property entity, images are in separate endpoints
 
         return implode('&', $params);
     }
@@ -279,6 +268,81 @@ class Shift8_TREB_AMPRE_Service {
                 'error' => esc_html($e->getMessage())
             ));
             return new WP_Error('ampre_api_error', $e->getMessage());
+        }
+    }
+
+    /**
+     * Get media (images) for a specific listing
+     *
+     * @since 1.0.0
+     * @param string $listing_key The MLS listing key
+     * @return array|WP_Error Array of media items or WP_Error
+     */
+    public function get_media_for_listing($listing_key) {
+        try {
+            if (empty($this->bearer_token)) {
+                throw new Exception('Bearer token is required');
+            }
+
+            if (empty($listing_key)) {
+                throw new Exception('Listing key is required');
+            }
+
+            // Build Media endpoint query
+            $filter = "ResourceRecordKey eq '" . sanitize_text_field($listing_key) . "'";
+            $endpoint = 'Media?$filter=' . $filter . '&$orderby=Order,PreferredPhotoYN desc';
+
+            shift8_treb_debug_log('Making AMPRE Media API request', array(
+                'listing_key' => esc_html($listing_key),
+                'endpoint' => esc_html($endpoint)
+            ));
+
+            $response = $this->make_request($endpoint);
+
+            if (is_wp_error($response)) {
+                throw new Exception('Media API request failed: ' . $response->get_error_message());
+            }
+
+            $response_code = wp_remote_retrieve_response_code($response);
+            $response_body = wp_remote_retrieve_body($response);
+
+            if ($response_code !== 200) {
+                throw new Exception('Media API returned status code: ' . $response_code);
+            }
+
+            $data = json_decode($response_body, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new Exception('Invalid JSON response from Media API');
+            }
+
+            if (!isset($data['value']) || !is_array($data['value'])) {
+                throw new Exception('Unexpected Media API response format');
+            }
+
+            // Filter for photos only and largest size
+            $photos = array();
+            foreach ($data['value'] as $media) {
+                if (isset($media['MediaCategory']) && $media['MediaCategory'] === 'Photo' &&
+                    isset($media['ImageSizeDescription']) && $media['ImageSizeDescription'] === 'Largest') {
+                    $photos[] = $media;
+                }
+            }
+
+            shift8_treb_debug_log('Media API response received', array(
+                'listing_key' => esc_html($listing_key),
+                'total_media' => count($data['value']),
+                'photos_found' => count($photos)
+            ));
+
+            return $photos;
+
+        } catch (Exception $e) {
+            shift8_treb_debug_log('AMPRE Media API error', array(
+                'listing_key' => esc_html($listing_key),
+                'error' => esc_html($e->getMessage())
+            ));
+            return new WP_Error('ampre_media_error', $e->getMessage());
         }
     }
 

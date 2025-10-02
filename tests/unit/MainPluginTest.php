@@ -79,6 +79,12 @@ class MainPluginTest extends TestCase {
         // Mock load_plugin_textdomain
         Functions\when('load_plugin_textdomain')->justReturn(true);
         
+        // Mock wp_next_scheduled
+        Functions\when('wp_next_scheduled')->justReturn(false);
+        
+        // Mock wp_schedule_event
+        Functions\when('wp_schedule_event')->justReturn(true);
+        
         // Test that init can be called without errors
         $this->plugin->init();
         
@@ -107,6 +113,8 @@ class MainPluginTest extends TestCase {
         
         // Mock flush_rewrite_rules
         Functions\when('flush_rewrite_rules')->justReturn(true);
+        Functions\when('wp_schedule_event')->justReturn(true);
+        Functions\when('wp_next_scheduled')->justReturn(false);
         
         // Test activation
         $this->plugin->activate();
@@ -142,6 +150,11 @@ class MainPluginTest extends TestCase {
         // Mock esc_html__
         Functions\when('esc_html__')->alias(function($text, $domain) { return $text; });
         
+        // Mock get_option to return specific sync frequency
+        Functions\when('get_option')->justReturn(array(
+            'sync_frequency' => 'shift8_treb_8hours'
+        ));
+        
         $existing_schedules = array(
             'hourly' => array('interval' => 3600, 'display' => 'Once Hourly'),
             'daily' => array('interval' => 86400, 'display' => 'Once Daily')
@@ -150,14 +163,13 @@ class MainPluginTest extends TestCase {
         $result = $this->plugin->add_custom_cron_schedules($existing_schedules);
         
         $this->assertIsArray($result, 'Should return array');
-        $this->assertArrayHasKey('every_8_hours', $result, 'Should add every_8_hours schedule');
-        $this->assertArrayHasKey('every_12_hours', $result, 'Should add every_12_hours schedule');
-        $this->assertArrayHasKey('bi_weekly', $result, 'Should add bi_weekly schedule');
+        $this->assertArrayHasKey('shift8_treb_8hours', $result, 'Should add only the active schedule (shift8_treb_8hours)');
+        $this->assertArrayNotHasKey('shift8_treb_12hours', $result, 'Should NOT add inactive schedules');
+        $this->assertArrayNotHasKey('shift8_treb_biweekly', $result, 'Should NOT add inactive schedules');
         
         // Test specific schedule values
-        $this->assertEquals(28800, $result['every_8_hours']['interval'], 'Eight hours should be 28800 seconds');
-        $this->assertEquals(43200, $result['every_12_hours']['interval'], 'Twelve hours should be 43200 seconds');
-        $this->assertEquals(1209600, $result['bi_weekly']['interval'], 'Biweekly should be 1209600 seconds');
+        $this->assertEquals(28800, $result['shift8_treb_8hours']['interval'], 'Eight hours should be 28800 seconds');
+        $this->assertEquals('Every 8 Hours', $result['shift8_treb_8hours']['display'], 'Should have correct display name');
     }
 
     /**
@@ -193,10 +205,13 @@ class MainPluginTest extends TestCase {
         // Mock wp_salt
         Functions\when('wp_salt')->justReturn('test_salt_auth_1234567890abcdef');
         Functions\when('wp_kses_post')->alias(function($content) { return strip_tags($content); });
+        Functions\when('esc_html__')->alias(function($text, $domain) { return $text; });
+        Functions\when('get_option')->justReturn(array('sync_frequency' => 'daily'));
+        Functions\when('wp_clear_scheduled_hook')->justReturn(true);
         
         $input = array(
             'bearer_token' => 'test_token_123',
-            'sync_frequency' => 'eight_hours',
+            'sync_frequency' => 'shift8_treb_8hours',
             'max_listings_per_query' => '50',
             'debug_enabled' => '1',
             'google_maps_api_key' => 'AIza_test_key',
@@ -212,7 +227,7 @@ class MainPluginTest extends TestCase {
         $result = $this->plugin->sanitize_settings($input);
         
         $this->assertIsArray($result, 'Should return sanitized array');
-        $this->assertEquals('eight_hours', $result['sync_frequency'], 'Should preserve valid sync frequency');
+        $this->assertEquals('shift8_treb_8hours', $result['sync_frequency'], 'Should preserve valid sync frequency');
         $this->assertEquals('50', $result['max_listings_per_query'], 'Should preserve valid query limit');
         $this->assertEquals('1', $result['debug_enabled'], 'Should preserve debug setting');
     }
@@ -226,6 +241,8 @@ class MainPluginTest extends TestCase {
         Functions\when('wp_salt')->justReturn('test_salt_auth_1234567890abcdef');
         Functions\when('esc_html__')->alias(function($text, $domain) { return $text; });
         Functions\when('wp_kses_post')->alias(function($content) { return strip_tags($content); });
+        Functions\when('get_option')->justReturn(array('sync_frequency' => 'daily'));
+        Functions\when('wp_clear_scheduled_hook')->justReturn(true);
         
         $input = array(
             'sync_frequency' => 'invalid_frequency',
@@ -284,6 +301,9 @@ class MainPluginTest extends TestCase {
      * Test encryption and decryption functions
      */
     public function test_token_encryption_decryption() {
+        // Mock wp_salt for encryption
+        Functions\when('wp_salt')->justReturn('test_salt_auth_1234567890abcdef');
+        
         $original_token = 'test_bearer_token_12345';
         
         // Test encryption
@@ -316,15 +336,25 @@ class MainPluginTest extends TestCase {
             public function get_contents($file) { return 'Test log entry'; }
         };
         
+        // Mock file system functions
+        Functions\when('is_dir')->justReturn(true);
+        Functions\when('wp_mkdir_p')->justReturn(true);
+        Functions\when('file_put_contents')->justReturn(100);
+        Functions\when('file_get_contents')->justReturn('Test log entry');
+        Functions\when('unlink')->justReturn(true);
+        
         // Mock get_option for logging
         Functions\when('get_option')->justReturn(array('debug_enabled' => '1'));
+        
+        // Mock current_time
+        Functions\when('current_time')->justReturn(date('Y-m-d H:i:s'));
         
         // Test logging
         \shift8_treb_log('Test message', array('context' => 'test'), 'info');
         
         // Test log retrieval
         $logs = \shift8_treb_get_logs(10);
-        $this->assertIsString($logs, 'Should return log content as string');
+        $this->assertIsArray($logs, 'Should return log content as array');
         
         // Test log clearing
         $result = \shift8_treb_clear_logs();
@@ -357,5 +387,81 @@ class MainPluginTest extends TestCase {
         
         // Test CLI initialization (this happens in constructor when WP_CLI is defined)
         $this->assertTrue(defined('WP_CLI'), 'WP_CLI should be defined for CLI tests');
+    }
+
+    /**
+     * Test cron scheduling management
+     */
+    public function test_manage_cron_scheduling() {
+        // Mock required functions
+        Functions\when('get_option')->justReturn(array(
+            'bearer_token' => 'test_token',
+            'sync_frequency' => 'daily'
+        ));
+        Functions\when('wp_next_scheduled')->justReturn(false);
+        Functions\when('wp_clear_scheduled_hook')->justReturn(true);
+        Functions\when('wp_schedule_event')->justReturn(true);
+        
+        // Test scheduling when no cron exists
+        $this->plugin->manage_cron_scheduling();
+        
+        // Test with existing cron that needs rescheduling
+        Functions\when('wp_next_scheduled')->justReturn(time() + 3600);
+        Functions\when('wp_get_scheduled_event')->justReturn((object) array('schedule' => 'hourly'));
+        
+        $this->plugin->manage_cron_scheduling();
+        
+        $this->assertTrue(true, 'Cron scheduling management completed without errors');
+    }
+
+    /**
+     * Test schedule sync method
+     */
+    public function test_schedule_sync() {
+        // Mock required functions
+        Functions\when('get_option')->justReturn(array('sync_frequency' => 'daily'));
+        Functions\when('wp_schedule_event')->justReturn(true);
+        Functions\when('wp_next_scheduled')->justReturn(false);
+        Functions\when('current_time')->justReturn(time());
+        
+        $result = $this->plugin->schedule_sync();
+        
+        $this->assertTrue($result, 'Should schedule sync successfully');
+    }
+
+    /**
+     * Test settings sanitization edge cases
+     */
+    public function test_sanitize_settings_edge_cases() {
+        // Mock required functions
+        Functions\when('sanitize_text_field')->alias(function($input) { return trim($input); });
+        Functions\when('esc_url_raw')->alias(function($input) { return filter_var($input, FILTER_SANITIZE_URL); });
+        Functions\when('wp_kses_post')->alias(function($content) { return strip_tags($content); });
+        Functions\when('get_option')->justReturn(array('sync_frequency' => 'daily'));
+        Functions\when('wp_clear_scheduled_hook')->justReturn(true);
+        Functions\when('add_settings_error')->justReturn(true);
+        Functions\when('esc_html__')->alias(function($text, $domain) { return $text; });
+        
+        // Test with empty input
+        $result = $this->plugin->sanitize_settings(array());
+        $this->assertIsArray($result, 'Should return array even with empty input');
+        
+        // Test with invalid member IDs (with spaces and empty values)
+        $input = array(
+            'member_id' => ' 123 , , 456 , ',
+            'excluded_member_ids' => '789, ,  ,  999  '
+        );
+        $result = $this->plugin->sanitize_settings($input);
+        $this->assertEquals('123,456', $result['member_id'], 'Should clean up member ID list');
+        $this->assertEquals('789,999', $result['excluded_member_ids'], 'Should clean up excluded member ID list');
+        
+        // Test with extreme listing age values
+        $input = array('listing_age_days' => '999');
+        $result = $this->plugin->sanitize_settings($input);
+        $this->assertEquals(365, $result['listing_age_days'], 'Should cap listing age at 365 days');
+        
+        $input = array('listing_age_days' => '-5');
+        $result = $this->plugin->sanitize_settings($input);
+        $this->assertEquals(5, $result['listing_age_days'], 'absint(-5) should return 5, then max(1, 5) returns 5');
     }
 }

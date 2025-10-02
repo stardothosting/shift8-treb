@@ -101,12 +101,28 @@ function shift8_treb_decrypt_data($encrypted_data) {
         return '';
     }
     
+    // Check if this looks like a JWT token (not encrypted)
+    if (strpos($encrypted_data, 'eyJ') === 0) {
+        // This is a plain JWT token, return as-is
+        return $encrypted_data;
+    }
+    
+    // This should be encrypted data, try to decrypt it
     $key = wp_salt('auth');
     $data = base64_decode($encrypted_data);
+    
+    // Check if base64 decode was successful and we have enough data
+    if ($data === false || strlen($data) < 16) {
+        return '';
+    }
+    
     $iv = substr($data, 0, 16);
     $encrypted = substr($data, 16);
     
-    return openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
+    $decrypted = openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
+    
+    // Return decrypted data, or empty string if decryption failed
+    return $decrypted !== false ? $decrypted : '';
 }
 
 // Check for minimum PHP version
@@ -197,10 +213,8 @@ class Shift8_TREB {
             $this->init_admin();
         }
         
-        // Schedule cron if not already scheduled
-        if (!wp_next_scheduled('shift8_treb_sync_listings')) {
-            $this->schedule_sync();
-        }
+        // Manage cron scheduling based on plugin state
+        $this->manage_cron_scheduling();
     }
     
     /**
@@ -230,12 +244,11 @@ class Shift8_TREB {
                     'max_listings_per_query' => 100,
                     'debug_enabled' => '0',
                     'google_maps_api_key' => '',
-                    'listing_status_filter' => 'Active',
-                    'city_filter' => 'Toronto',
-                    'property_type_filter' => '',
-                    'agent_filter' => '',
-                    'min_price' => '0',
-                    'max_price' => '999999999',
+                    'walkscore_api_key' => '',
+                    'walkscore_id' => '',
+                    'member_id' => '',
+                    'excluded_member_ids' => '',
+                    'listing_age_days' => '30',
                     'listing_template' => 'Property Details:\n\nAddress: %ADDRESS%\nPrice: %PRICE%\nMLS: %MLS%\nBedrooms: %BEDROOMS%\nBathrooms: %BATHROOMS%\nSquare Feet: %SQFT%\n\nDescription:\n%DESCRIPTION%'
                 )
             )
@@ -265,9 +278,18 @@ class Shift8_TREB {
         }
         
         // Sanitize sync frequency with extended options
-        $allowed_frequencies = array('hourly', 'eight_hours', 'twelve_hours', 'daily', 'weekly', 'biweekly', 'monthly');
+        $allowed_frequencies = array('hourly', 'shift8_treb_8hours', 'shift8_treb_12hours', 'daily', 'weekly', 'shift8_treb_biweekly', 'shift8_treb_monthly');
         if (isset($input['sync_frequency']) && in_array($input['sync_frequency'], $allowed_frequencies, true)) {
-            $sanitized['sync_frequency'] = $input['sync_frequency'];
+            $new_frequency = $input['sync_frequency'];
+            $old_frequency = get_option('shift8_treb_settings')['sync_frequency'] ?? 'daily';
+            
+            // If frequency changed, reschedule cron
+            if ($new_frequency !== $old_frequency) {
+                wp_clear_scheduled_hook('shift8_treb_sync_listings');
+                // Schedule will be recreated in init() method
+            }
+            
+            $sanitized['sync_frequency'] = $new_frequency;
         } else {
             $sanitized['sync_frequency'] = 'daily';
         }
@@ -286,29 +308,34 @@ class Shift8_TREB {
             $sanitized['google_maps_api_key'] = sanitize_text_field($input['google_maps_api_key']);
         }
         
-        // Sanitize listing filters
-        if (isset($input['listing_status_filter'])) {
-            $sanitized['listing_status_filter'] = sanitize_text_field($input['listing_status_filter']);
+        // Sanitize WalkScore settings
+        if (isset($input['walkscore_api_key'])) {
+            $sanitized['walkscore_api_key'] = sanitize_text_field($input['walkscore_api_key']);
+        }
+        if (isset($input['walkscore_id'])) {
+            $sanitized['walkscore_id'] = sanitize_text_field($input['walkscore_id']);
         }
         
-        if (isset($input['city_filter'])) {
-            $sanitized['city_filter'] = sanitize_text_field($input['city_filter']);
+        // Sanitize member ID (supports comma-separated values)
+        if (isset($input['member_id'])) {
+            $member_ids = sanitize_text_field($input['member_id']);
+            // Clean up comma-separated values: remove extra spaces, empty values
+            $member_list = array_filter(array_map('trim', explode(',', $member_ids)));
+            $sanitized['member_id'] = implode(',', $member_list);
         }
         
-        if (isset($input['property_type_filter'])) {
-            $sanitized['property_type_filter'] = sanitize_text_field($input['property_type_filter']);
+        // Sanitize excluded member IDs (supports comma-separated values)
+        if (isset($input['excluded_member_ids'])) {
+            $excluded_ids = sanitize_text_field($input['excluded_member_ids']);
+            // Clean up comma-separated values: remove extra spaces, empty values
+            $excluded_list = array_filter(array_map('trim', explode(',', $excluded_ids)));
+            $sanitized['excluded_member_ids'] = implode(',', $excluded_list);
         }
         
-        if (isset($input['agent_filter'])) {
-            $sanitized['agent_filter'] = sanitize_text_field($input['agent_filter']);
-        }
-        
-        if (isset($input['min_price'])) {
-            $sanitized['min_price'] = absint($input['min_price']);
-        }
-        
-        if (isset($input['max_price'])) {
-            $sanitized['max_price'] = absint($input['max_price']);
+        // Sanitize listing age days
+        if (isset($input['listing_age_days'])) {
+            $listing_age = absint($input['listing_age_days']);
+            $sanitized['listing_age_days'] = max(1, min(365, $listing_age)); // Between 1 and 365 days
         }
         
         if (isset($input['listing_template'])) {
@@ -335,29 +362,38 @@ class Shift8_TREB {
      * @return array Modified cron schedules
      */
     public function add_custom_cron_schedules($schedules) {
-        // Every 8 hours
-        $schedules['every_8_hours'] = array(
-            'interval' => 8 * HOUR_IN_SECONDS,
-            'display'  => esc_html__('Every 8 Hours', 'shift8-treb')
+        // Only register the schedule that's currently being used
+        $settings = get_option('shift8_treb_settings', array());
+        $sync_frequency = isset($settings['sync_frequency']) ? $settings['sync_frequency'] : 'daily';
+        
+        // Define all available custom schedules
+        $custom_schedules = array(
+            'shift8_treb_8hours' => array(
+                'interval' => 8 * HOUR_IN_SECONDS,
+                'display'  => esc_html__('Every 8 Hours', 'shift8-treb')
+            ),
+            'shift8_treb_12hours' => array(
+                'interval' => 12 * HOUR_IN_SECONDS,
+                'display'  => esc_html__('Every 12 Hours', 'shift8-treb')
+            ),
+            'shift8_treb_biweekly' => array(
+                'interval' => 2 * 7 * DAY_IN_SECONDS,
+                'display'  => esc_html__('Bi-Weekly (Every 2 Weeks)', 'shift8-treb')
+            ),
+            'shift8_treb_monthly' => array(
+                'interval' => 30 * DAY_IN_SECONDS,
+                'display'  => esc_html__('Monthly', 'shift8-treb')
+            )
         );
         
-        // Every 12 hours
-        $schedules['every_12_hours'] = array(
-            'interval' => 12 * HOUR_IN_SECONDS,
-            'display'  => esc_html__('Every 12 Hours', 'shift8-treb')
-        );
-        
-        // Bi-weekly (every 2 weeks)
-        $schedules['bi_weekly'] = array(
-            'interval' => 2 * 7 * DAY_IN_SECONDS,
-            'display'  => esc_html__('Bi-Weekly (Every 2 Weeks)', 'shift8-treb')
-        );
-        
-        // Monthly (30 days)
-        $schedules['monthly'] = array(
-            'interval' => 30 * DAY_IN_SECONDS,
-            'display'  => esc_html__('Monthly', 'shift8-treb')
-        );
+        // Only register the schedule that's currently being used
+        if (isset($custom_schedules[$sync_frequency])) {
+            $schedules[$sync_frequency] = $custom_schedules[$sync_frequency];
+            shift8_treb_debug_log('Registered cron schedule', array(
+                'schedule' => $sync_frequency,
+                'interval' => $custom_schedules[$sync_frequency]['interval']
+            ));
+        }
         
         return $schedules;
     }
@@ -380,6 +416,56 @@ class Shift8_TREB {
             'frequency' => $sync_frequency,
             'next_run' => wp_next_scheduled('shift8_treb_sync_listings')
         ));
+        
+        return true;
+    }
+    
+    /**
+     * Manage cron scheduling based on plugin state
+     * 
+     * Following shift8-zoom pattern for proper cron management
+     *
+     * @since 1.0.0
+     */
+    public function manage_cron_scheduling() {
+        $settings = get_option('shift8_treb_settings', array());
+        $bearer_token = isset($settings['bearer_token']) ? $settings['bearer_token'] : '';
+        $sync_frequency = isset($settings['sync_frequency']) ? $settings['sync_frequency'] : 'daily';
+        
+        // Check if sync is enabled (has required settings)
+        $sync_enabled = !empty($bearer_token);
+        
+        if ($sync_enabled) {
+            $next_scheduled = wp_next_scheduled('shift8_treb_sync_listings');
+            
+            if (!$next_scheduled) {
+                // No cron scheduled, create one
+                $this->schedule_sync();
+                shift8_treb_debug_log('TREB cron scheduled', array(
+                    'frequency' => $sync_frequency,
+                    'next_run' => wp_next_scheduled('shift8_treb_sync_listings')
+                ));
+            } else {
+                // Check if frequency matches current setting
+                $current_cron = wp_get_scheduled_event('shift8_treb_sync_listings');
+                if ($current_cron && $current_cron->schedule !== $sync_frequency) {
+                    // Frequency changed, reschedule
+                    wp_clear_scheduled_hook('shift8_treb_sync_listings');
+                    $this->schedule_sync();
+                    shift8_treb_debug_log('TREB cron rescheduled', array(
+                        'old_frequency' => $current_cron->schedule,
+                        'new_frequency' => $sync_frequency,
+                        'next_run' => wp_next_scheduled('shift8_treb_sync_listings')
+                    ));
+                }
+            }
+        } else {
+            // Sync disabled, clear any existing cron
+            if (wp_next_scheduled('shift8_treb_sync_listings')) {
+                wp_clear_scheduled_hook('shift8_treb_sync_listings');
+                shift8_treb_debug_log('TREB cron cleared - sync disabled (no bearer token)');
+            }
+        }
     }
     
     /**
@@ -396,11 +482,17 @@ class Shift8_TREB {
             // Get plugin settings
             $settings = get_option('shift8_treb_settings', array());
             
+            // Add last sync timestamp for incremental sync
+            $last_sync = get_option('shift8_treb_last_sync', '');
+            if (!empty($last_sync)) {
+                $settings['last_sync_timestamp'] = $last_sync;
+            }
+            
             if (empty($settings['bearer_token'])) {
                 throw new Exception('Bearer token not configured');
             }
             
-            // Decrypt bearer token (it's encrypted when stored)
+            // Decrypt bearer token (handles both encrypted and plain JWT tokens)
             $bearer_token = shift8_treb_decrypt_data($settings['bearer_token']);
             $settings['bearer_token'] = $bearer_token;
             
@@ -441,10 +533,15 @@ class Shift8_TREB {
                 }
             }
             
+            // Update last sync timestamp for incremental sync
+            $current_timestamp = current_time('c'); // ISO 8601 format
+            update_option('shift8_treb_last_sync', $current_timestamp);
+            
             shift8_treb_debug_log('=== TREB SYNC COMPLETED ===', array(
                 'total_listings' => count($listings),
                 'processed' => $processed,
-                'errors' => $errors
+                'errors' => $errors,
+                'next_sync_from' => $current_timestamp
             ));
             
         } catch (Exception $e) {
@@ -485,6 +582,9 @@ class Shift8_TREB {
         
         // Flush rewrite rules
         flush_rewrite_rules();
+        
+        // Schedule the sync cron job
+        $this->schedule_sync();
         
         shift8_treb_debug_log('Plugin activated');
     }

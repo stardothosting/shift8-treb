@@ -18,6 +18,8 @@ $settings = wp_parse_args(get_option('shift8_treb_settings', array()), array(
     'max_listings_per_query' => 100,
     'debug_enabled' => '0',
     'google_maps_api_key' => '',
+    'walkscore_api_key' => '',
+    'walkscore_id' => '',
     'listing_status_filter' => 'Active',
     'city_filter' => 'Toronto',
     'property_type_filter' => '',
@@ -58,12 +60,24 @@ $sync_status = array(
                                 <label for="bearer_token"><?php esc_html_e('Bearer Token', 'shift8-treb'); ?> <span class="required">*</span></label>
                             </th>
                             <td>
+<?php if (!empty($settings['bearer_token'])): ?>
                                 <input type="password" 
                                        id="bearer_token" 
                                        name="shift8_treb_settings[bearer_token]" 
-                                       value="<?php echo esc_attr($settings['bearer_token']); ?>" 
+                                       value="" 
                                        class="regular-text" 
-                                       placeholder="<?php echo !empty($settings['bearer_token']) ? esc_attr__('Token is set', 'shift8-treb') : esc_attr__('Enter your AMPRE API bearer token', 'shift8-treb'); ?>" />
+                                       placeholder="<?php esc_attr_e('Token is set - enter new token to change', 'shift8-treb'); ?>" />
+                                <p class="description" style="color: green; font-weight: bold;">
+                                    ✓ <?php esc_html_e('Bearer token is currently set and encrypted', 'shift8-treb'); ?>
+                                </p>
+                                <?php else: ?>
+                                <input type="password" 
+                                       id="bearer_token" 
+                                       name="shift8_treb_settings[bearer_token]" 
+                                       value="" 
+                                       class="regular-text" 
+                                       placeholder="<?php esc_attr_e('Enter your AMPRE API bearer token', 'shift8-treb'); ?>" />
+                                <?php endif; ?>
                                 <p class="description">
                                     <?php esc_html_e('Your AMPRE API bearer token for authentication.', 'shift8-treb'); ?>
                                     <button type="button" id="test-api-connection" class="button button-secondary" style="margin-left: 10px;">
@@ -87,12 +101,12 @@ $sync_status = array(
                             <td>
                                 <select id="sync_frequency" name="shift8_treb_settings[sync_frequency]">
                                     <option value="hourly" <?php selected($settings['sync_frequency'], 'hourly'); ?>><?php esc_html_e('Hourly', 'shift8-treb'); ?></option>
-                                    <option value="eight_hours" <?php selected($settings['sync_frequency'], 'eight_hours'); ?>><?php esc_html_e('Every 8 Hours', 'shift8-treb'); ?></option>
-                                    <option value="twelve_hours" <?php selected($settings['sync_frequency'], 'twelve_hours'); ?>><?php esc_html_e('Every 12 Hours', 'shift8-treb'); ?></option>
+                                    <option value="shift8_treb_8hours" <?php selected($settings['sync_frequency'], 'shift8_treb_8hours'); ?>><?php esc_html_e('Every 8 Hours', 'shift8-treb'); ?></option>
+                                    <option value="shift8_treb_12hours" <?php selected($settings['sync_frequency'], 'shift8_treb_12hours'); ?>><?php esc_html_e('Every 12 Hours', 'shift8-treb'); ?></option>
                                     <option value="daily" <?php selected($settings['sync_frequency'], 'daily'); ?>><?php esc_html_e('Daily', 'shift8-treb'); ?></option>
                                     <option value="weekly" <?php selected($settings['sync_frequency'], 'weekly'); ?>><?php esc_html_e('Weekly', 'shift8-treb'); ?></option>
-                                    <option value="biweekly" <?php selected($settings['sync_frequency'], 'biweekly'); ?>><?php esc_html_e('Bi-weekly', 'shift8-treb'); ?></option>
-                                    <option value="monthly" <?php selected($settings['sync_frequency'], 'monthly'); ?>><?php esc_html_e('Monthly', 'shift8-treb'); ?></option>
+                                    <option value="shift8_treb_biweekly" <?php selected($settings['sync_frequency'], 'shift8_treb_biweekly'); ?>><?php esc_html_e('Bi-weekly', 'shift8-treb'); ?></option>
+                                    <option value="shift8_treb_monthly" <?php selected($settings['sync_frequency'], 'shift8_treb_monthly'); ?>><?php esc_html_e('Monthly', 'shift8-treb'); ?></option>
                                 </select>
                                 <p class="description"><?php esc_html_e('How often to sync listings from AMPRE API.', 'shift8-treb'); ?></p>
                             </td>
@@ -115,92 +129,51 @@ $sync_status = array(
                     </table>
                 </div>
 
-                <!-- Listing Filters Section -->
+                <!-- Agent Configuration Section -->
                 <div class="card">
-                    <h2 class="title"><?php esc_html_e('Listing Filters', 'shift8-treb'); ?></h2>
+                    <h2 class="title"><?php esc_html_e('Agent Configuration', 'shift8-treb'); ?></h2>
                     <table class="form-table">
                         <tr>
                             <th scope="row">
-                                <label for="listing_status_filter"><?php esc_html_e('Status Filter', 'shift8-treb'); ?></label>
+                                <label for="member_id"><?php esc_html_e('Member ID', 'shift8-treb'); ?></label>
                             </th>
                             <td>
                                 <input type="text" 
-                                       id="listing_status_filter" 
-                                       name="shift8_treb_settings[listing_status_filter]" 
-                                       value="<?php echo esc_attr($settings['listing_status_filter']); ?>" 
+                                       id="member_id" 
+                                       name="shift8_treb_settings[member_id]" 
+                                       value="<?php echo esc_attr($settings['member_id'] ?? ''); ?>" 
                                        class="regular-text" 
-                                       placeholder="Active" />
-                                <p class="description"><?php esc_html_e('Filter listings by status (e.g., Active, Sold).', 'shift8-treb'); ?></p>
+                                       placeholder="<?php esc_attr_e('e.g., 2229166,9580044', 'shift8-treb'); ?>" />
+                                <p class="description"><?php esc_html_e('Your Member ID(s) (ListAgentKey) to identify your own listings. Use comma-separated values for multiple agents (e.g., 2229166,9580044). Listings matching any of these IDs will be categorized as "Listings", others as "OtherListings".', 'shift8-treb'); ?></p>
                             </td>
                         </tr>
                         <tr>
                             <th scope="row">
-                                <label for="city_filter"><?php esc_html_e('City Filter', 'shift8-treb'); ?></label>
+                                <label for="excluded_member_ids"><?php esc_html_e('Member IDs to Exclude', 'shift8-treb'); ?></label>
                             </th>
                             <td>
                                 <input type="text" 
-                                       id="city_filter" 
-                                       name="shift8_treb_settings[city_filter]" 
-                                       value="<?php echo esc_attr($settings['city_filter']); ?>" 
+                                       id="excluded_member_ids" 
+                                       name="shift8_treb_settings[excluded_member_ids]" 
+                                       value="<?php echo esc_attr($settings['excluded_member_ids'] ?? ''); ?>" 
                                        class="regular-text" 
-                                       placeholder="Toronto" />
-                                <p class="description"><?php esc_html_e('Filter listings by city.', 'shift8-treb'); ?></p>
+                                       placeholder="<?php esc_attr_e('e.g., 1234567,8901234', 'shift8-treb'); ?>" />
+                                <p class="description"><?php esc_html_e('Member IDs to completely exclude from sync. Listings from these agents will be skipped entirely. Use comma-separated values for multiple agents (e.g., 1234567,8901234).', 'shift8-treb'); ?></p>
                             </td>
                         </tr>
                         <tr>
                             <th scope="row">
-                                <label for="property_type_filter"><?php esc_html_e('Property Type Filter', 'shift8-treb'); ?></label>
-                            </th>
-                            <td>
-                                <input type="text" 
-                                       id="property_type_filter" 
-                                       name="shift8_treb_settings[property_type_filter]" 
-                                       value="<?php echo esc_attr($settings['property_type_filter']); ?>" 
-                                       class="regular-text" 
-                                       placeholder="<?php esc_attr_e('Leave empty for all types', 'shift8-treb'); ?>" />
-                                <p class="description"><?php esc_html_e('Filter listings by property type (e.g., Residential, Commercial).', 'shift8-treb'); ?></p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row">
-                                <label for="agent_filter"><?php esc_html_e('Agent Filter', 'shift8-treb'); ?></label>
-                            </th>
-                            <td>
-                                <input type="text" 
-                                       id="agent_filter" 
-                                       name="shift8_treb_settings[agent_filter]" 
-                                       value="<?php echo esc_attr($settings['agent_filter'] ?? ''); ?>" 
-                                       class="regular-text" 
-                                       placeholder="<?php esc_attr_e('Leave empty for all agents', 'shift8-treb'); ?>" />
-                                <p class="description"><?php esc_html_e('Filter listings by specific agent ID (ListAgentKey). Leave empty to get all agents\' listings.', 'shift8-treb'); ?></p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row">
-                                <label for="min_price"><?php esc_html_e('Minimum Price', 'shift8-treb'); ?></label>
+                                <label for="listing_age_days"><?php esc_html_e('Listing Age (days)', 'shift8-treb'); ?></label>
                             </th>
                             <td>
                                 <input type="number" 
-                                       id="min_price" 
-                                       name="shift8_treb_settings[min_price]" 
-                                       value="<?php echo esc_attr($settings['min_price']); ?>" 
-                                       min="0" 
-                                       class="regular-text" />
-                                <p class="description"><?php esc_html_e('Minimum listing price filter.', 'shift8-treb'); ?></p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row">
-                                <label for="max_price"><?php esc_html_e('Maximum Price', 'shift8-treb'); ?></label>
-                            </th>
-                            <td>
-                                <input type="number" 
-                                       id="max_price" 
-                                       name="shift8_treb_settings[max_price]" 
-                                       value="<?php echo esc_attr($settings['max_price']); ?>" 
-                                       min="0" 
-                                       class="regular-text" />
-                                <p class="description"><?php esc_html_e('Maximum listing price filter.', 'shift8-treb'); ?></p>
+                                       id="listing_age_days" 
+                                       name="shift8_treb_settings[listing_age_days]" 
+                                       value="<?php echo esc_attr($settings['listing_age_days'] ?? '30'); ?>" 
+                                       min="1" 
+                                       max="365" 
+                                       class="small-text" />
+                                <p class="description"><?php esc_html_e('Only sync listings modified within the last X days. This filters by ModificationTimestamp.', 'shift8-treb'); ?></p>
                             </td>
                         </tr>
                     </table>
@@ -220,8 +193,36 @@ $sync_status = array(
                                        name="shift8_treb_settings[google_maps_api_key]" 
                                        value="<?php echo esc_attr($settings['google_maps_api_key']); ?>" 
                                        class="regular-text" 
-                                       placeholder="<?php esc_attr_e('Optional: For enhanced mapping features', 'shift8-treb'); ?>" />
-                                <p class="description"><?php esc_html_e('Google Maps API key for enhanced mapping features (optional).', 'shift8-treb'); ?></p>
+                                       placeholder="<?php esc_attr_e('Optional: For geocoding and mapping', 'shift8-treb'); ?>" />
+                                <p class="description"><?php esc_html_e('Google Maps API key for geocoding addresses to lat/lng coordinates and mapping features.', 'shift8-treb'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="walkscore_api_key"><?php esc_html_e('WalkScore API Key', 'shift8-treb'); ?></label>
+                            </th>
+                            <td>
+                                <input type="text" 
+                                       id="walkscore_api_key" 
+                                       name="shift8_treb_settings[walkscore_api_key]" 
+                                       value="<?php echo esc_attr($settings['walkscore_api_key']); ?>" 
+                                       class="regular-text" 
+                                       placeholder="<?php esc_attr_e('Optional: For WalkScore integration', 'shift8-treb'); ?>" />
+                                <p class="description"><?php esc_html_e('WalkScore API key for walkability scoring (optional).', 'shift8-treb'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="walkscore_id"><?php esc_html_e('WalkScore ID', 'shift8-treb'); ?></label>
+                            </th>
+                            <td>
+                                <input type="text" 
+                                       id="walkscore_id" 
+                                       name="shift8_treb_settings[walkscore_id]" 
+                                       value="<?php echo esc_attr($settings['walkscore_id']); ?>" 
+                                       class="regular-text" 
+                                       placeholder="<?php esc_attr_e('Optional: WalkScore widget ID', 'shift8-treb'); ?>" />
+                                <p class="description"><?php esc_html_e('WalkScore ID for embedding walkability widgets in listings.', 'shift8-treb'); ?></p>
                             </td>
                         </tr>
                         <tr>
@@ -250,9 +251,113 @@ $sync_status = array(
                                           rows="10" 
                                           cols="50" 
                                           class="large-text"><?php echo esc_textarea($settings['listing_template']); ?></textarea>
-                                <p class="description">
-                                    <?php esc_html_e('Template for listing post content. Use placeholders like %ADDRESS%, %PRICE%, %MLS%, %BEDROOMS%, %BATHROOMS%, %SQFT%, %DESCRIPTION%, %PROPERTY_TYPE%, %CITY%, %POSTAL_CODE%', 'shift8-treb'); ?>
-                                </p>
+                                <div class="description">
+                                    <p><strong><?php esc_html_e('Available Template Placeholders:', 'shift8-treb'); ?></strong></p>
+                                    <div class="shift8-treb-placeholders">
+                                        <div class="placeholder-section">
+                                            <h4><?php esc_html_e('Property Information', 'shift8-treb'); ?></h4>
+                                            <ul>
+                                                <li><code>%ADDRESS%</code> - <?php esc_html_e('Full property address', 'shift8-treb'); ?></li>
+                                                <li><code>%STREETNUMBER%</code> - <?php esc_html_e('Street number only', 'shift8-treb'); ?></li>
+                                                <li><code>%STREETNAME%</code> - <?php esc_html_e('Street name only', 'shift8-treb'); ?></li>
+                                                <li><code>%APT_NUM%</code> - <?php esc_html_e('Apartment/unit number', 'shift8-treb'); ?></li>
+                                                <li><code>%PRICE%</code> - <?php esc_html_e('Formatted listing price', 'shift8-treb'); ?></li>
+                                                <li><code>%LISTPRICE%</code> - <?php esc_html_e('Formatted listing price (alias)', 'shift8-treb'); ?></li>
+                                                <li><code>%MLS%</code> - <?php esc_html_e('MLS number', 'shift8-treb'); ?></li>
+                                                <li><code>%MLSNUMBER%</code> - <?php esc_html_e('MLS number (alias)', 'shift8-treb'); ?></li>
+                                                <li><code>%BEDROOMS%</code> - <?php esc_html_e('Number of bedrooms', 'shift8-treb'); ?></li>
+                                                <li><code>%BATHROOMS%</code> - <?php esc_html_e('Number of bathrooms', 'shift8-treb'); ?></li>
+                                                <li><code>%SQFT%</code> - <?php esc_html_e('Square footage', 'shift8-treb'); ?></li>
+                                                <li><code>%SQFOOTAGE%</code> - <?php esc_html_e('Square footage (alias)', 'shift8-treb'); ?></li>
+                                                <li><code>%DESCRIPTION%</code> - <?php esc_html_e('Property description', 'shift8-treb'); ?></li>
+                                                <li><code>%PROPERTY_TYPE%</code> - <?php esc_html_e('Property type', 'shift8-treb'); ?></li>
+                                                <li><code>%CITY%</code> - <?php esc_html_e('City name', 'shift8-treb'); ?></li>
+                                                <li><code>%POSTAL_CODE%</code> - <?php esc_html_e('Postal code', 'shift8-treb'); ?></li>
+                                            </ul>
+                                        </div>
+                                        
+                                        <div class="placeholder-section">
+                                            <h4><?php esc_html_e('Universal Image Placeholders', 'shift8-treb'); ?></h4>
+                                            <ul>
+                                                <li><code>%LISTING_IMAGES%</code> - <?php esc_html_e('Comma-separated list of all image URLs', 'shift8-treb'); ?></li>
+                                                <li><code>%BASE64IMAGES%</code> - <?php esc_html_e('Base64 encoded image URLs (Visual Composer format)', 'shift8-treb'); ?></li>
+                                                <li><code>%LISTING_IMAGE_1%</code> - <?php esc_html_e('First image URL', 'shift8-treb'); ?></li>
+                                                <li><code>%LISTING_IMAGE_2%</code> - <?php esc_html_e('Second image URL', 'shift8-treb'); ?></li>
+                                                <li><code>%LISTING_IMAGE_3%</code> - <?php esc_html_e('Third image URL', 'shift8-treb'); ?></li>
+                                                <li><em><?php esc_html_e('... up to %LISTING_IMAGE_10%', 'shift8-treb'); ?></em></li>
+                                            </ul>
+                                        </div>
+                                        
+                                        <div class="placeholder-section">
+                                            <h4><?php esc_html_e('WordPress Native Placeholders', 'shift8-treb'); ?></h4>
+                                            <ul>
+                                                <li><code>%FEATURED_IMAGE%</code> - <?php esc_html_e('WordPress featured image HTML', 'shift8-treb'); ?></li>
+                                                <li><code>%IMAGE_GALLERY%</code> - <?php esc_html_e('WordPress gallery shortcode HTML', 'shift8-treb'); ?></li>
+                                            </ul>
+                                        </div>
+                                        
+                                        <div class="placeholder-section">
+                                            <h4><?php esc_html_e('Additional Features', 'shift8-treb'); ?></h4>
+                                            <ul>
+                                                <li><code>%VIRTUALTOUR%</code> - <?php esc_html_e('Virtual tour link', 'shift8-treb'); ?></li>
+                                                <li><code>%VIRTUAL_TOUR_SECTION%</code> - <?php esc_html_e('Formatted virtual tour section', 'shift8-treb'); ?></li>
+                                                <li><code>%PHONEMSG%</code> - <?php esc_html_e('Contact phone message', 'shift8-treb'); ?></li>
+                                                <li><code>%WALKSCORECODE%</code> - <?php esc_html_e('WalkScore integration code', 'shift8-treb'); ?></li>
+                                                <li><code>%WPBLOG%</code> - <?php esc_html_e('WordPress site URL', 'shift8-treb'); ?></li>
+                                                <li><code>%MAPLAT%</code> - <?php esc_html_e('Property latitude', 'shift8-treb'); ?></li>
+                                                <li><code>%MAPLNG%</code> - <?php esc_html_e('Property longitude', 'shift8-treb'); ?></li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <style>
+                                .shift8-treb-placeholders {
+                                    margin-top: 15px;
+                                    display: grid;
+                                    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                                    gap: 20px;
+                                }
+                                
+                                .placeholder-section {
+                                    background: #f9f9f9;
+                                    padding: 15px;
+                                    border-radius: 5px;
+                                    border-left: 4px solid #0073aa;
+                                }
+                                
+                                .placeholder-section h4 {
+                                    margin: 0 0 10px 0;
+                                    color: #0073aa;
+                                    font-size: 14px;
+                                }
+                                
+                                .placeholder-section ul {
+                                    margin: 0;
+                                    padding-left: 20px;
+                                }
+                                
+                                .placeholder-section li {
+                                    margin-bottom: 5px;
+                                    font-size: 13px;
+                                    line-height: 1.4;
+                                }
+                                
+                                .placeholder-section code {
+                                    background: #fff;
+                                    padding: 2px 6px;
+                                    border-radius: 3px;
+                                    font-weight: bold;
+                                    color: #d63384;
+                                    border: 1px solid #ddd;
+                                }
+                                
+                                @media (max-width: 768px) {
+                                    .shift8-treb-placeholders {
+                                        grid-template-columns: 1fr;
+                                    }
+                                }
+                                </style>
                             </td>
                         </tr>
                     </table>
@@ -361,23 +466,32 @@ $sync_status = array(
     display: flex;
     gap: 20px;
     margin-top: 20px;
+    width: 100%;
 }
 
 .shift8-treb-main-content {
     flex: 1;
+    min-width: 0; /* Allows flex item to shrink below content size */
+    width: calc(100% - 320px); /* Explicit width calculation */
 }
 
 .shift8-treb-sidebar {
     width: 300px;
     flex-shrink: 0;
+    flex-basis: 300px;
 }
 
-.card {
+/* Use more specific selector to override WordPress default .card styles */
+.shift8-treb-main-content .card {
     background: #fff;
     border: 1px solid #ccd0d4;
     box-shadow: 0 1px 1px rgba(0,0,0,.04);
     margin-bottom: 20px;
     padding: 20px;
+    width: 100%;
+    max-width: none; /* Override WordPress default max-width: 520px */
+    min-width: auto; /* Override WordPress default min-width: 255px */
+    box-sizing: border-box;
 }
 
 .card h2.title,
@@ -388,6 +502,20 @@ $sync_status = array(
     font-weight: 600;
     text-transform: uppercase;
     color: #23282d;
+}
+
+.shift8-treb-main-content .form-table {
+    width: 100%;
+    max-width: none;
+}
+
+.shift8-treb-main-content .form-table th {
+    width: 200px;
+    padding-right: 20px;
+}
+
+.shift8-treb-main-content .form-table td {
+    width: auto;
 }
 
 .required {
@@ -427,12 +555,29 @@ $sync_status = array(
     color: #d63638;
 }
 
+/* WordPress admin override - using specific selectors instead of !important */
+.wrap .shift8-treb-admin-container {
+    display: flex;
+    width: 100%;
+    max-width: none;
+}
+
+.wrap .shift8-treb-main-content {
+    flex: 1;
+    min-width: 0;
+    width: calc(100% - 320px);
+}
+
 @media (max-width: 782px) {
-    .shift8-treb-admin-container {
+    .wrap .shift8-treb-admin-container {
         flex-direction: column;
     }
     
-    .shift8-treb-sidebar {
+    .wrap .shift8-treb-main-content {
+        width: 100%;
+    }
+    
+    .wrap .shift8-treb-sidebar {
         width: 100%;
         max-width: none;
     }

@@ -15,16 +15,21 @@ This plugin replaces manual listing management by automatically fetching propert
 - Duplicate detection and prevention using MLS numbers
 
 ### AMPRE API Integration
-- Secure Bearer token authentication
+- Secure Bearer token authentication with intelligent encryption handling
 - Comprehensive API connection testing
-- Configurable listing filters (status, city, property type, price range)
-- Rate limiting and error handling
+- Incremental synchronization using ModificationTimestamp for efficiency
+- Configurable listing age filters (days) for targeted data retrieval
+- Member-based categorization supporting multiple agent IDs
+- Exclusion filters for unwanted agent listings
+- Rate limiting and comprehensive error handling
 
 ### Content Management
 - Creates standard WordPress posts (not custom post types)
-- Customizable listing templates with placeholder support
-- Automatic image downloading and featured image assignment
-- Proper categorization (Listings/OtherListings) based on agent association
+- Universal template system compatible with all page builders (Visual Composer, Elementor, Gutenberg, Bricks)
+- Comprehensive image management with WordPress media library integration
+- Batch image processing with retry logic and external URL fallbacks
+- Featured image assignment with intelligent priority (first image or preferred photo)
+- Dynamic categorization (Listings/OtherListings) based on agent membership
 - SEO-friendly post structure with proper excerpts and metadata
 
 ### Administrative Interface
@@ -50,28 +55,52 @@ This plugin replaces manual listing management by automatically fetching propert
 ## Configuration
 
 ### Required Settings
-- **Bearer Token**: Your AMPRE API authentication token
+- **Bearer Token**: Your AMPRE API authentication token (automatically encrypted)
 - **Sync Frequency**: How often to check for new listings
 - **Max Listings Per Query**: API request batch size (1-1000)
 
-### Optional Settings
-- **Google Maps API Key**: For enhanced mapping features
-- **Listing Filters**: Status, city, property type, price range
-- **Listing Template**: Customizable post content template
+### Agent Configuration
+- **Member ID**: Comma-separated list of agent IDs for "Listings" category
+- **Member IDs to Exclude**: Comma-separated list of agent IDs to skip entirely
+- **Listing Age (days)**: Maximum age of listings to sync (1-365 days)
+
+### Optional Integrations
+- **Google Maps API Key**: For geocoding addresses to lat/lng coordinates
+- **WalkScore API Key**: For walkability scoring integration
+- **WalkScore ID**: Widget ID for WalkScore integration
+- **Listing Template**: Customizable post content template with universal placeholders
 - **Debug Mode**: Enable detailed logging for troubleshooting
 
 ### Template Placeholders
-The listing template supports the following placeholders:
+
+#### Property Information
 - `%ADDRESS%` - Full property address
-- `%PRICE%` - Listing price
-- `%MLS%` - MLS number
+- `%LISTPRICE%` - Formatted listing price
+- `%MLSNUMBER%` - MLS number
 - `%BEDROOMS%` - Number of bedrooms
 - `%BATHROOMS%` - Number of bathrooms
-- `%SQFT%` - Square footage
+- `%SQFOOTAGE%` - Square footage
 - `%DESCRIPTION%` - Property description
-- `%PROPERTY_TYPE%` - Property type
-- `%CITY%` - City name
-- `%POSTAL_CODE%` - Postal code
+- `%STREETNUMBER%` - Parsed street number
+- `%STREETNAME%` - Parsed street name
+- `%APT_NUM%` - Unit/apartment number
+
+#### Universal Image Placeholders
+- `%FEATURED_IMAGE%` - WordPress featured image HTML
+- `%IMAGE_GALLERY%` - WordPress gallery shortcode
+- `%LISTING_IMAGES%` - Comma-separated image URLs
+- `%LISTING_IMAGE_1%` to `%LISTING_IMAGE_10%` - Individual image URLs
+- `%BASE64IMAGES%` - Base64 encoded URLs (Visual Composer compatible)
+
+#### Location & Mapping
+- `%MAPLAT%` - Latitude coordinate (with geocoding fallback)
+- `%MAPLNG%` - Longitude coordinate (with geocoding fallback)
+- `%WALKSCORECODE%` - WalkScore widget (if configured)
+
+#### Additional Features
+- `%PHONEMSG%` - Contact phone message
+- `%VIRTUALTOUR%` - Virtual tour link (if available)
+- `%WPBLOG%` - WordPress site URL
 
 ## WP-CLI Commands
 
@@ -85,11 +114,17 @@ wp shift8-treb sync
 # Test sync without creating posts
 wp shift8-treb sync --dry-run --verbose
 
-# Limit processing to specific number of listings
-wp shift8-treb sync --limit=50
+# Override listing age filter (in days)
+wp shift8-treb sync --listing-age=30
 
-# Force sync even without configured token
-wp shift8-treb sync --force
+# Skip image downloads for faster sync
+wp shift8-treb sync --skip-images
+
+# Use batch image processing for better performance
+wp shift8-treb sync --batch-images
+
+# Combine options for testing
+wp shift8-treb sync --dry-run --verbose --listing-age=7 --skip-images
 ```
 
 ### View Settings
@@ -103,7 +138,14 @@ wp shift8-treb settings --format=json
 
 ### Test API Connection
 ```bash
+# Test main API connection
 wp shift8-treb test_api
+
+# Test media API for specific listing
+wp shift8-treb test_media W12345678
+
+# Show raw JSON response
+wp shift8-treb test_media W12345678 --raw
 ```
 
 ### Manage Logs
@@ -144,10 +186,12 @@ shift8-treb/
 ```
 
 ### Data Storage
-- Plugin settings stored in WordPress options table
-- Sensitive data (API tokens) encrypted using WordPress salts
-- Logs stored in wp-content/uploads/shift8-treb-logs/
-- Images downloaded to wp-content/uploads/treb/{mlsnumber}/
+- Plugin settings stored in WordPress options table with automatic migration
+- Sensitive data (API tokens) encrypted using WordPress salts with intelligent handling
+- Logs stored in wp-content/uploads/shift8-treb-logs/ with automatic rotation
+- Images integrated into WordPress media library with proper metadata
+- Geocoding results cached using WordPress transients (24-hour expiration)
+- Incremental sync timestamps tracked for efficient API usage
 
 ### Security Features
 - All user input sanitized and validated
@@ -202,6 +246,17 @@ This plugin is built to meet WordPress.org plugin directory standards:
 - Minimal impact on site performance
 
 ## Changelog
+
+### Version 1.1.0 (Current)
+- **Enhanced Media Integration**: Complete WordPress media library integration with batch processing
+- **Universal Template System**: Page builder agnostic placeholders supporting Visual Composer, Elementor, Gutenberg, Bricks
+- **Advanced Image Management**: Featured image priority, retry logic, external URL fallbacks
+- **Google Maps Integration**: Geocoding with intelligent caching and fallback coordinates
+- **WalkScore Integration**: Conditional widget generation with proper API key validation
+- **Improved Categorization**: Dynamic category assignment based on agent membership
+- **Performance Optimizations**: Batch image processing, incremental sync, optimized timeouts
+- **Enhanced CLI**: New commands for media testing, listing age overrides, image processing options
+- **Comprehensive Testing**: Zero-tolerance test suite with 47 passing tests
 
 ### Version 1.0.0
 - Initial release
