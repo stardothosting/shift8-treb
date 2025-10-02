@@ -163,6 +163,20 @@ $sync_status = array(
                         </tr>
                         <tr>
                             <th scope="row">
+                                <label for="agent_filter"><?php esc_html_e('Agent Filter', 'shift8-treb'); ?></label>
+                            </th>
+                            <td>
+                                <input type="text" 
+                                       id="agent_filter" 
+                                       name="shift8_treb_settings[agent_filter]" 
+                                       value="<?php echo esc_attr($settings['agent_filter'] ?? ''); ?>" 
+                                       class="regular-text" 
+                                       placeholder="<?php esc_attr_e('Leave empty for all agents', 'shift8-treb'); ?>" />
+                                <p class="description"><?php esc_html_e('Filter listings by specific agent ID (ListAgentKey). Leave empty to get all agents\' listings.', 'shift8-treb'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
                                 <label for="min_price"><?php esc_html_e('Minimum Price', 'shift8-treb'); ?></label>
                             </th>
                             <td>

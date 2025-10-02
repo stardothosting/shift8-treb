@@ -186,10 +186,8 @@ class Shift8_TREB_AMPRE_Service {
         // Add filters based on settings
         $filters = array();
 
-        // Status filter (e.g., 'Active')
-        if (!empty($this->settings['listing_status_filter'])) {
-            $filters[] = "StandardStatus eq '" . sanitize_text_field($this->settings['listing_status_filter']) . "'";
-        }
+        // Use ContractStatus instead of StandardStatus for available listings
+        $filters[] = "ContractStatus eq 'Available'";
 
         // City filter (e.g., 'Toronto')
         if (!empty($this->settings['city_filter'])) {
@@ -210,9 +208,14 @@ class Shift8_TREB_AMPRE_Service {
             $filters[] = "ListPrice le " . intval($this->settings['max_price']);
         }
 
+        // Agent filter (ListAgentKey)
+        if (!empty($this->settings['agent_filter'])) {
+            $filters[] = "ListAgentKey eq '" . sanitize_text_field($this->settings['agent_filter']) . "'";
+        }
+
         // Combine filters
         if (!empty($filters)) {
-            $params[] = '$filter=' . urlencode(implode(' and ', $filters));
+            $params[] = '$filter=' . implode(' and ', $filters);
         }
 
         // Limit results

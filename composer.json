@@ -1,0 +1,53 @@
+{
+    "name": "shift8/treb-real-estate-listings",
+    "description": "WordPress plugin that integrates TREB real estate listings via AMPRE API",
+    "type": "wordpress-plugin",
+    "license": "GPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Shift8 Web",
+            "email": "info@shift8web.ca",
+            "homepage": "https://shift8web.ca"
+        }
+    ],
+    "require": {
+        "php": ">=7.4"
+    },
+    "require-dev": {
+        "brain/monkey": "^2.6",
+        "dealerdirect/phpcodesniffer-composer-installer": "^0.7",
+        "phpcompatibility/phpcompatibility-wp": "^2.1",
+        "phpunit/phpunit": "^9.6",
+        "roave/security-advisories": "dev-latest",
+        "wp-coding-standards/wpcs": "^2.3",
+        "yoast/phpunit-polyfills": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Shift8\\TREB\\": "includes/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Shift8\\TREB\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit --testdox",
+        "test:unit": "phpunit --testsuite=unit --testdox",
+        "test:integration": "phpunit --testsuite=integration", 
+        "test:acceptance": "phpunit --testsuite=acceptance",
+        "test:coverage": "phpunit --coverage-text",
+        "test:coverage-html": "phpunit --coverage-html tests/coverage/html",
+        "cs:check": "phpcs",
+        "cs:fix": "phpcbf",
+        "analyze": "psalm --show-info=true"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        },
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}

@@ -122,6 +122,11 @@ class Shift8_TREB_CLI {
             $query_limit = $limit ?? ($settings['max_listings_per_query'] ?? 100);
             $listings = $ampre_service->get_listings();
 
+            // Check for WP_Error
+            if (is_wp_error($listings)) {
+                WP_CLI::error('API request failed: ' . $listings->get_error_message());
+            }
+
             if (empty($listings)) {
                 WP_CLI::warning('No listings returned from API');
                 shift8_treb_log('No listings returned from AMPRE API', array(), 'warning');

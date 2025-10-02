@@ -233,6 +233,7 @@ class Shift8_TREB {
                     'listing_status_filter' => 'Active',
                     'city_filter' => 'Toronto',
                     'property_type_filter' => '',
+                    'agent_filter' => '',
                     'min_price' => '0',
                     'max_price' => '999999999',
                     'listing_template' => 'Property Details:\n\nAddress: %ADDRESS%\nPrice: %PRICE%\nMLS: %MLS%\nBedrooms: %BEDROOMS%\nBathrooms: %BATHROOMS%\nSquare Feet: %SQFT%\n\nDescription:\n%DESCRIPTION%'
@@ -296,6 +297,10 @@ class Shift8_TREB {
         
         if (isset($input['property_type_filter'])) {
             $sanitized['property_type_filter'] = sanitize_text_field($input['property_type_filter']);
+        }
+        
+        if (isset($input['agent_filter'])) {
+            $sanitized['agent_filter'] = sanitize_text_field($input['agent_filter']);
         }
         
         if (isset($input['min_price'])) {
@@ -391,9 +396,13 @@ class Shift8_TREB {
             // Get plugin settings
             $settings = get_option('shift8_treb_settings', array());
             
-            if (empty($settings['ampre_api_token'])) {
-                throw new Exception('AMPRE API token not configured');
+            if (empty($settings['bearer_token'])) {
+                throw new Exception('Bearer token not configured');
             }
+            
+            // Decrypt bearer token (it's encrypted when stored)
+            $bearer_token = shift8_treb_decrypt_data($settings['bearer_token']);
+            $settings['bearer_token'] = $bearer_token;
             
             // Initialize AMPRE service
             require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-ampre-service.php';
