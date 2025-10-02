@@ -41,8 +41,8 @@ class Shift8_TREB_CLI {
      * [--skip-images]
      * : Skip image downloads for faster sync (stores external URLs only)
      *
-     * [--batch-images]
-     * : Use batch processing for faster image downloads (3x faster than sequential)
+     * [--sequential-images]
+     * : Use sequential processing instead of default batch processing (slower but more compatible)
      *
      * ## EXAMPLES
      *
@@ -110,10 +110,15 @@ class Shift8_TREB_CLI {
                 }
             }
 
-            if (isset($assoc_args['batch-images'])) {
-                $settings_overrides['batch_image_processing'] = true;
+            if (isset($assoc_args['sequential-images'])) {
+                $settings_overrides['batch_image_processing'] = false;
                 if ($verbose) {
-                    WP_CLI::line("⚡ Batch mode: Using optimized batch image processing (3x faster)");
+                    WP_CLI::line("🐌 Sequential mode: Using sequential image processing (slower but more compatible)");
+                }
+            } else {
+                // Batch processing is now the default
+                if ($verbose) {
+                    WP_CLI::line("⚡ Batch mode: Using optimized batch image processing (default)");
                 }
             }
 

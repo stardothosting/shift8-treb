@@ -611,13 +611,24 @@ class Shift8_TREB_Post_Manager {
         $preferred_image_id = null;
         $first_successful_image = null;
 
-        // Performance: Limit to reasonable number of images (default: 5 for speed)
-        $max_images = apply_filters('shift8_treb_max_images_per_listing', 5);
-        $media_items = array_slice($media_items, 0, $max_images);
+        // Performance: Allow unlimited images by default, but provide filter for hosting constraints
+        // Following .cursorrules performanceOptimizationPatterns: make expensive operations conditional
+        $original_count = count($media_items);
+        $max_images = apply_filters('shift8_treb_max_images_per_listing', 0); // 0 = unlimited
+        if ($max_images > 0) {
+            $media_items = array_slice($media_items, 0, $max_images);
+            shift8_treb_debug_log('Limited images per listing', array(
+                'mls_number' => esc_html($mls_number),
+                'original_count' => $original_count,
+                'limited_count' => count($media_items),
+                'max_images' => $max_images
+            ));
+        }
 
         // Performance: Check processing mode
+        // Following .cursorrules performanceOptimizationPatterns: batch processing default for better performance
         $skip_images = isset($this->settings['skip_image_download']) && $this->settings['skip_image_download'];
-        $batch_mode = isset($this->settings['batch_image_processing']) && $this->settings['batch_image_processing'];
+        $batch_mode = !isset($this->settings['batch_image_processing']) || $this->settings['batch_image_processing']; // Default: true
         
         if ($skip_images) {
             shift8_treb_debug_log('Skipping image download for fast sync', array(
@@ -829,7 +840,31 @@ class Shift8_TREB_Post_Manager {
                 if (file_exists($upload['file'])) {
                     wp_delete_file($upload['file']);
                 }
+                shift8_treb_debug_log('Attachment creation failed', array(
+                    'error' => esc_html($attachment_id->get_error_message()),
+                    'post_id' => $post_id,
+                    'mls_number' => esc_html($mls_number),
+                    'image_number' => $image_number
+                ), 'error');
                 return false;
+            }
+
+            // Verify post_parent was set correctly (debugging for post_parent issue)
+            $created_attachment = get_post($attachment_id);
+            if ($created_attachment && $created_attachment->post_parent != $post_id) {
+                shift8_treb_debug_log('Post parent mismatch detected', array(
+                    'attachment_id' => $attachment_id,
+                    'expected_parent' => $post_id,
+                    'actual_parent' => $created_attachment->post_parent,
+                    'mls_number' => esc_html($mls_number),
+                    'image_number' => $image_number
+                ), 'warning');
+                
+                // Attempt to fix the post_parent
+                wp_update_post(array(
+                    'ID' => $attachment_id,
+                    'post_parent' => $post_id
+                ));
             }
 
             // Generate attachment metadata (thumbnails, etc.)
@@ -1163,17 +1198,30 @@ class Shift8_TREB_Post_Manager {
     private function execute_batch_http_requests($batch_requests) {
         $responses = array();
         
-        // WordPress doesn't have built-in concurrent HTTP, but we can optimize
-        // by processing requests in smaller batches with optimized settings
+        // Cross-hosting compatibility: Adaptive batch sizing based on environment
+        // Following .cursorrules performanceOptimizationPatterns for hosting environment compatibility
+        $batch_size = $this->get_optimal_batch_size();
+        $timeout = $this->get_optimal_timeout();
+        $delay = $this->get_optimal_delay();
         
-        $batch_size = apply_filters('shift8_treb_http_batch_size', 3); // Process 3 at a time
         $batches = array_chunk($batch_requests, $batch_size);
         
-        foreach ($batches as $batch) {
+        shift8_treb_debug_log('Starting batch image processing', array(
+            'total_requests' => count($batch_requests),
+            'batch_count' => count($batches),
+            'batch_size' => $batch_size,
+            'timeout' => $timeout,
+            'delay_ms' => $delay * 1000
+        ));
+        
+        foreach ($batches as $batch_index => $batch) {
             $batch_start = microtime(true);
             
-            // Process each request in the batch
+            // Process each request in the batch with optimized settings
             foreach ($batch as $request_data) {
+                // Override timeout in request settings for cross-hosting compatibility
+                $request_data['request']['timeout'] = $timeout;
+                
                 $response = wp_remote_get($request_data['url'], $request_data['request']);
                 
                 $responses[] = array(
@@ -1187,13 +1235,99 @@ class Shift8_TREB_Post_Manager {
             
             $batch_time = microtime(true) - $batch_start;
             
-            // Small delay between batches to avoid overwhelming the server
-            if ($batch_time < 1.0) {
-                usleep(200000); // 200ms delay
+            // Adaptive delay based on batch performance and hosting constraints
+            if ($batch_index < count($batches) - 1) {
+                $adaptive_delay = max($delay, $batch_time * 0.1); // At least 10% of batch time
+                usleep($adaptive_delay * 1000000); // Convert to microseconds
             }
+            
+            shift8_treb_debug_log('Batch completed', array(
+                'batch' => $batch_index + 1,
+                'batch_time' => round($batch_time, 2),
+                'requests_in_batch' => count($batch)
+            ));
         }
         
         return $responses;
+    }
+
+    /**
+     * Get optimal batch size based on hosting environment
+     *
+     * @since 1.1.0
+     * @return int Optimal batch size
+     */
+    private function get_optimal_batch_size() {
+        // Check for memory constraints
+        $memory_limit = $this->get_memory_limit_mb();
+        
+        if ($memory_limit < 64) {
+            return 2; // Very constrained hosting
+        } elseif ($memory_limit < 128) {
+            return 3; // Standard shared hosting
+        } elseif ($memory_limit < 256) {
+            return 5; // Better hosting
+        } else {
+            return 8; // High-performance hosting
+        }
+    }
+
+    /**
+     * Get optimal timeout based on hosting environment
+     *
+     * @since 1.1.0
+     * @return int Timeout in seconds
+     */
+    private function get_optimal_timeout() {
+        // Check execution time limit
+        $max_execution_time = ini_get('max_execution_time');
+        
+        if ($max_execution_time > 0 && $max_execution_time < 60) {
+            return 5; // Very limited execution time
+        } elseif ($max_execution_time > 0 && $max_execution_time < 120) {
+            return 8; // Standard hosting
+        } else {
+            return 12; // Generous hosting or CLI
+        }
+    }
+
+    /**
+     * Get optimal delay between batches
+     *
+     * @since 1.1.0
+     * @return float Delay in seconds
+     */
+    private function get_optimal_delay() {
+        // Base delay, can be filtered for specific hosting needs
+        return apply_filters('shift8_treb_batch_delay', 0.25);
+    }
+
+    /**
+     * Get memory limit in MB
+     *
+     * @since 1.1.0
+     * @return int Memory limit in MB
+     */
+    private function get_memory_limit_mb() {
+        $memory_limit = ini_get('memory_limit');
+        
+        if ($memory_limit == -1) {
+            return 512; // Unlimited, assume high-performance
+        }
+        
+        $value = (int) $memory_limit;
+        $unit = strtoupper(substr($memory_limit, -1));
+        
+        switch ($unit) {
+            case 'G':
+                return $value * 1024;
+            case 'M':
+                return $value;
+            case 'K':
+                return $value / 1024;
+            default:
+                return $value / (1024 * 1024); // Bytes to MB
+        }
     }
 
     /**
@@ -1247,7 +1381,31 @@ class Shift8_TREB_Post_Manager {
             if (file_exists($upload['file'])) {
                 wp_delete_file($upload['file']);
             }
+            shift8_treb_debug_log('Batch attachment creation failed', array(
+                'error' => esc_html($attachment_id->get_error_message()),
+                'post_id' => $post_id,
+                'mls_number' => esc_html($mls_number),
+                'image_number' => $image_number
+            ), 'error');
             return false;
+        }
+
+        // Verify post_parent was set correctly (debugging for post_parent issue)
+        $created_attachment = get_post($attachment_id);
+        if ($created_attachment && $created_attachment->post_parent != $post_id) {
+            shift8_treb_debug_log('Batch post parent mismatch detected', array(
+                'attachment_id' => $attachment_id,
+                'expected_parent' => $post_id,
+                'actual_parent' => $created_attachment->post_parent,
+                'mls_number' => esc_html($mls_number),
+                'image_number' => $image_number
+            ), 'warning');
+            
+            // Attempt to fix the post_parent
+            wp_update_post(array(
+                'ID' => $attachment_id,
+                'post_parent' => $post_id
+            ));
         }
 
         // Generate metadata

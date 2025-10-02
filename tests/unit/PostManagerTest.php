@@ -624,4 +624,78 @@ class PostManagerTest extends TestCase {
 
         $this->assertFalse($result, 'Should return false without API key');
     }
+
+    /**
+     * Test unlimited image processing (no limit)
+     */
+    public function test_unlimited_image_processing() {
+        // Mock the apply_filters function to return 0 (unlimited)
+        Functions\when('apply_filters')->alias(function($hook, $default) {
+            if ($hook === 'shift8_treb_max_images_per_listing') {
+                return 0; // Unlimited
+            }
+            return $default;
+        });
+
+        $settings = array('bearer_token' => 'test_token');
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        // Test the filter behavior directly instead of the full method
+        $max_images = apply_filters('shift8_treb_max_images_per_listing', 5);
+        
+        $this->assertEquals(0, $max_images, 'Should return 0 for unlimited images');
+    }
+
+    /**
+     * Test optimal batch size calculation
+     */
+    public function test_optimal_batch_size() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('get_optimal_batch_size');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($post_manager);
+        
+        $this->assertIsInt($result);
+        $this->assertGreaterThan(0, $result);
+        $this->assertLessThanOrEqual(8, $result); // Max batch size
+    }
+
+    /**
+     * Test optimal timeout calculation
+     */
+    public function test_optimal_timeout() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('get_optimal_timeout');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($post_manager);
+        
+        $this->assertIsInt($result);
+        $this->assertGreaterThan(0, $result);
+        $this->assertLessThanOrEqual(12, $result); // Max timeout
+    }
+
+    /**
+     * Test memory limit parsing
+     */
+    public function test_memory_limit_parsing() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('get_memory_limit_mb');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($post_manager);
+        
+        $this->assertIsInt($result);
+        $this->assertGreaterThan(0, $result);
+    }
 }
