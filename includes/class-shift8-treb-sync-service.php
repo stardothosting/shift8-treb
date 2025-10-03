@@ -178,6 +178,11 @@ class Shift8_TREB_Sync_Service {
             $results['listings'] = $listings;
 
             shift8_treb_log('Fetched listings from AMPRE', array('count' => count($listings)));
+            
+            // Simple progress feedback for CLI
+            if (defined('WP_CLI') && WP_CLI) {
+                WP_CLI::line("Found {$results['total_listings']} listings to process");
+            }
 
             // Apply limit if specified
             if ($limit && $limit > 0) {
@@ -189,7 +194,18 @@ class Shift8_TREB_Sync_Service {
             }
 
             // Process each listing
+            $processed_count = 0;
+            $total_to_process = count($listings);
+            
             foreach ($listings as $listing) {
+                $processed_count++;
+                
+                // Simple progress feedback for CLI (every 10 listings or at end)
+                if (defined('WP_CLI') && WP_CLI && ($processed_count % 10 == 0 || $processed_count == $total_to_process)) {
+                    $mls = isset($listing['ListingKey']) ? $listing['ListingKey'] : 'Unknown';
+                    WP_CLI::line("Processing {$processed_count}/{$total_to_process}: MLS {$mls}");
+                }
+                
                 try {
                     if ($dry_run) {
                         // In dry run mode, just validate and count

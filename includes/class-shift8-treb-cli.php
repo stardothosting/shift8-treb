@@ -181,14 +181,13 @@ class Shift8_TREB_CLI {
 
             // Display results
             if ($results['total_listings'] > 0) {
-                WP_CLI::line("Found {$results['total_listings']} listings");
-                
                 if ($limit && $limit > 0) {
                     WP_CLI::line("Limited to {$limit} listings for processing");
                 }
 
                 // Show sample data in verbose mode
                 if ($verbose && !empty($results['listings'])) {
+                    WP_CLI::line('');
                     WP_CLI::line('Sample listing data:');
                     $sample = $results['listings'][0];
                     WP_CLI::line('- ListingKey: ' . ($sample['ListingKey'] ?? 'N/A'));
@@ -196,10 +195,6 @@ class Shift8_TREB_CLI {
                     WP_CLI::line('- Price: $' . number_format($sample['ListPrice'] ?? 0));
                     WP_CLI::line('- Status: ' . ($sample['StandardStatus'] ?? 'N/A'));
                     WP_CLI::line('');
-                    
-                    // Show progress bar
-                    $progress = \WP_CLI\Utils\make_progress_bar('Processing listings', count($results['listings']));
-                    $progress->finish();
                 }
             } else {
                 WP_CLI::warning('No listings returned from API');
