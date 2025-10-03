@@ -525,12 +525,19 @@ class Shift8_TREB_Post_Manager {
         );
         
         // Get media from AMPRE API
+        if (defined('WP_CLI') && WP_CLI) {
+            WP_CLI::line("  Fetching media for MLS {$mls_number}...");
+        }
+        
         require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-ampre-service.php';
         $ampre_service = new Shift8_TREB_AMPRE_Service($this->settings);
         
         $media_items = $ampre_service->get_media_for_listing($mls_number);
         
         if (is_wp_error($media_items) || empty($media_items)) {
+            if (defined('WP_CLI') && WP_CLI) {
+                WP_CLI::line("  No media found for MLS {$mls_number}");
+            }
             shift8_treb_log('No media found for listing', array(
                 'mls_number' => esc_html($mls_number),
                 'error' => is_wp_error($media_items) ? $media_items->get_error_message() : 'No media items'
@@ -539,6 +546,10 @@ class Shift8_TREB_Post_Manager {
         }
 
         $stats['total'] = count($media_items);
+        
+        if (defined('WP_CLI') && WP_CLI) {
+            WP_CLI::line("  Found {$stats['total']} images for MLS {$mls_number}");
+        }
         
         shift8_treb_log('Processing listing images', array(
             'mls_number' => esc_html($mls_number),
@@ -585,6 +596,9 @@ class Shift8_TREB_Post_Manager {
 
         // Batch processing mode for better performance
         if ($batch_mode) {
+            if (defined('WP_CLI') && WP_CLI) {
+                WP_CLI::line("  Starting batch download for MLS {$mls_number}...");
+            }
             return $this->process_images_batch($post_id, $media_items, $mls_number, $stats);
         }
 
@@ -1030,6 +1044,9 @@ class Shift8_TREB_Post_Manager {
         }
 
         // Execute batch HTTP requests
+        if (defined('WP_CLI') && WP_CLI) {
+            WP_CLI::line("  Downloading {" . count($batch_requests) . "} images...");
+        }
         $batch_responses = $this->execute_batch_http_requests($batch_requests);
         
         // Process responses
@@ -1116,6 +1133,10 @@ class Shift8_TREB_Post_Manager {
             ));
         }
 
+        if (defined('WP_CLI') && WP_CLI) {
+            WP_CLI::line("  Completed MLS {$mls_number}: {$stats['downloaded']} downloaded, {$stats['failed']} failed");
+        }
+        
         shift8_treb_log('Batch image processing completed', array(
             'mls_number' => esc_html($mls_number),
             'stats' => $stats
@@ -1154,6 +1175,10 @@ class Shift8_TREB_Post_Manager {
         
         foreach ($batches as $batch_index => $batch) {
             $batch_start = microtime(true);
+            
+            if (defined('WP_CLI') && WP_CLI && count($batches) > 1) {
+                WP_CLI::line("    Batch " . ($batch_index + 1) . "/" . count($batches) . " (" . count($batch) . " images)");
+            }
             
             // Process each request in the batch with optimized settings
             foreach ($batch as $request_data) {
