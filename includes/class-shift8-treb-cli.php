@@ -555,7 +555,7 @@ class Shift8_TREB_CLI {
                     $mod_time = strtotime($modification_timestamp);
                     if ($mod_time) {
                         $days_since_mod = floor((time() - $mod_time) / (24 * 60 * 60));
-                        $date_info = "Modified: " . date('Y-m-d H:i', $mod_time) . " ({$days_since_mod} days ago)";
+                        $date_info = "Modified: " . gmdate('Y-m-d H:i', $mod_time) . " ({$days_since_mod} days ago)";
                     }
                 }
                 
@@ -563,7 +563,7 @@ class Shift8_TREB_CLI {
                     $list_time = strtotime($listing_date);
                     if ($list_time) {
                         $days_since_list = floor((time() - $list_time) / (24 * 60 * 60));
-                        $list_info = "Listed: " . date('Y-m-d', $list_time) . " ({$days_since_list} days ago)";
+                        $list_info = "Listed: " . gmdate('Y-m-d', $list_time) . " ({$days_since_list} days ago)";
                         $date_info = $date_info ? $date_info . " | " . $list_info : $list_info;
                     }
                 }

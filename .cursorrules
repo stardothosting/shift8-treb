@@ -1,0 +1,1033 @@
+{
+    "ignoreLinterErrors": [
+        "Undefined function add_action",
+        "Undefined function add_filter",
+        "Undefined function add_menu_page",
+        "Undefined function add_submenu_page",
+        "Undefined function wp_verify_nonce",
+        "Undefined function wp_send_json_success",
+        "Undefined function wp_send_json_error",
+        "Undefined function wp_localize_script",
+        "Undefined function wp_enqueue_script",
+        "Undefined function wp_enqueue_style",
+        "Undefined function wp_add_inline_style",
+        "Undefined function esc_html__",
+        "Undefined function esc_html",
+        "Undefined function esc_attr",
+        "Undefined function current_user_can",
+        "Undefined function get_option",
+        "Undefined function update_option",
+        "Undefined function add_option",
+        "Undefined function plugin_dir_path",
+        "Undefined function plugin_dir_url",
+        "Undefined function plugin_basename",
+        "Undefined function load_plugin_textdomain",
+        "Undefined function register_activation_hook",
+        "Undefined function register_deactivation_hook",
+        "Undefined function is_plugin_active",
+        "Undefined function admin_url",
+        "Undefined function wp_create_nonce",
+        "Undefined function current_time",
+        "Undefined function wp_clear_scheduled_hook",
+        "Undefined function wp_schedule_event",
+        "Undefined function wp_next_scheduled",
+        "Undefined function wp_remote_get",
+        "Undefined function wp_remote_request",
+        "Undefined function wp_remote_retrieve_response_code",
+        "Undefined function wp_remote_retrieve_body",
+        "Undefined function wp_insert_post",
+        "Undefined function wp_update_post",
+        "Undefined function get_posts",
+        "Undefined function wp_upload_dir",
+        "Undefined function wp_mkdir_p",
+        "Undefined function wp_delete_file",
+        "Undefined function wp_json_encode",
+        "Undefined function sanitize_text_field",
+        "Undefined function sanitize_email",
+        "Undefined function esc_url_raw",
+        "Undefined function wp_unslash",
+        "Undefined function wp_die",
+        "Undefined function check_admin_referer",
+        "Undefined function add_settings_error",
+        "Undefined function register_setting",
+        "Undefined function wp_salt",
+        "Undefined function wp_filesystem",
+        "Undefined constant WP_DEBUG",
+        "Undefined constant WP_DEBUG_LOG",
+        "Undefined constant ABSPATH",
+        "Undefined constant HOUR_IN_SECONDS",
+        "Undefined constant DAY_IN_SECONDS"
+    ],
+    "context": "WordPress plugin development - WordPress core functions and constants are always available",
+    "versionManagement": {
+        "description": "Automatically update CSS/JS version references when files are modified",
+        "trigger": "When modifying WordPress plugin CSS or JS files",
+        "actions": [
+            "Check for wp_enqueue_style() and wp_enqueue_script() calls that reference the modified file",
+            "Update the version parameter to use the plugin's version constant (e.g., SHIFT8_TREB_VERSION)",
+            "Replace hardcoded version numbers like '1.0.0' with centralized constants",
+            "For development, consider using PLUGIN_VERSION . '-' . time() for immediate cache busting",
+            "For production, use just the plugin version constant"
+        ],
+        "examples": {
+            "before": "wp_enqueue_script('admin-js', $url, array(), '1.0.0', true);",
+            "after": "wp_enqueue_script('admin-js', $url, array(), SHIFT8_TREB_VERSION, true);",
+            "development": "wp_enqueue_script('admin-js', $url, array(), SHIFT8_TREB_VERSION . '-' . time(), true);"
+        }
+    },
+    "trebSpecificRules": {
+        "description": "TREB/AMPRE API specific development guidelines",
+        "apiIntegration": {
+            "baseUrl": "https://query.ampre.ca/odata/",
+            "authentication": "Bearer JWT token in Authorization header",
+            "rateLimiting": "Implement proper rate limiting and caching to avoid API abuse",
+            "errorHandling": "Always handle API errors gracefully with proper logging",
+            "dataValidation": "Validate all API responses before processing"
+        },
+        "cronScheduling": {
+            "rule": "Use WordPress wp-cron system instead of system cron",
+            "frequency": "Default to hourly sync, allow admin configuration",
+            "errorRecovery": "Implement retry logic for failed API calls",
+            "logging": "Log all sync activities for debugging"
+        },
+        "postManagement": {
+            "rule": "Create regular WordPress posts (NOT custom post types) exactly like Python script",
+            "duplicateHandling": "Use MLS number as post tag to prevent duplicates",
+            "imageHandling": "Download images to wp-content/uploads/treb/{mlsnumber}/ and set featured image",
+            "postStructure": "Title: full address, Content: from template, Excerpt: formatted address/price/MLS",
+            "categories": "Use 'Listings' for own agent, 'OtherListings' for others",
+            "tags": "Use MLS number as post tag for duplicate detection"
+        },
+        "dataMapping": {
+            "rule": "Map AMPRE API fields to WordPress post structure",
+            "requiredFields": ["ListingKey", "UnparsedAddress", "ListPrice", "ContractStatus", "ListAgentKey", "ModificationTimestamp"],
+            "customFields": "Store all additional listing data as custom fields",
+            "taxonomies": "Use WordPress taxonomies for property types, locations, etc.",
+            "keyFields": {
+                "ContractStatus": "Use 'Available' for active listings (not StandardStatus)",
+                "ModificationTimestamp": "Critical for incremental sync and listing age filtering",
+                "ListAgentKey": "Essential for member-based categorization"
+            }
+        },
+        "queryOptimization": {
+            "rule": "Follow AMPRE API documentation patterns exactly",
+            "filterStructure": "Use ContractStatus eq 'Available' and ModificationTimestamp ge [ISO8601]",
+            "ordering": "Always use $orderby=ModificationTimestamp,ListingKey for consistent results",
+            "incrementalSync": "Implement ModificationTimestamp-based incremental sync to reduce API load",
+            "listingAge": "Support listing age filters (days) that convert to ModificationTimestamp cutoffs",
+            "avoidExpansion": "Do NOT use $expand=Media - it's not supported and causes 400 errors"
+        }
+    },
+    "wordpressPluginDirectoryCompliance": {
+        "description": "Ensure all code meets WordPress.org plugin directory automated checker requirements",
+        "securityRequirements": {
+            "outputEscaping": {
+                "rule": "ALL output must be escaped using appropriate WordPress functions",
+                "functions": ["esc_html()", "esc_attr()", "esc_url()", "esc_js()", "wp_kses()"],
+                "examples": {
+                    "exceptions": "throw new Exception('Error: ' . esc_html($message));",
+                    "variables": "echo esc_html($variable);",
+                    "attributes": "<input value=\"<?php echo esc_attr($value); ?>\" />",
+                    "urls": "<a href=\"<?php echo esc_url($link); ?>\">Link</a>"
+                },
+                "critical": "Exception messages MUST be escaped even if they seem safe"
+            },
+            "inputSanitization": {
+                "rule": "ALL $_POST, $_GET, $_REQUEST input must be sanitized at point of access",
+                "pattern": "isset($_POST['field']) ? sanitize_function(wp_unslash($_POST['field'])) : ''",
+                "functions": ["sanitize_text_field()", "sanitize_email()", "sanitize_user()", "esc_url_raw()"],
+                "examples": {
+                    "text": "isset($_POST['text']) ? sanitize_text_field(wp_unslash($_POST['text'])) : ''",
+                    "email": "isset($_POST['email']) ? sanitize_email(wp_unslash($_POST['email'])) : ''",
+                    "url": "isset($_POST['url']) ? esc_url_raw(wp_unslash($_POST['url'])) : ''"
+                },
+                "critical": "ALWAYS use wp_unslash() before sanitization, and isset() checks are mandatory"
+            },
+            "nonceVerification": {
+                "rule": "All form submissions must verify nonces BEFORE processing data",
+                "pattern": "wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'action_name')",
+                "critical": "Nonce verification must happen first, and nonce itself must be sanitized"
+            },
+            "fileOperations": {
+                "rule": "Use WordPress file functions instead of direct PHP file operations",
+                "replacements": {
+                    "unlink()": "wp_delete_file()",
+                    "file_get_contents()": "$wp_filesystem->get_contents()",
+                    "file_put_contents()": "$wp_filesystem->put_contents()",
+                    "fopen/fwrite/fclose": "WP_Filesystem API"
+                },
+                "setup": "Always initialize WP_Filesystem before use"
+            }
+        },
+        "developmentFunctions": {
+            "rule": "Remove or conditionally wrap development functions for production",
+            "functions": ["error_log()", "print_r()", "var_dump()", "var_export()"],
+            "solutions": {
+                "removal": "Delete development functions entirely",
+                "conditional": "Wrap in if (defined('WP_DEBUG') && WP_DEBUG) { ... }",
+                "replacement": "Use wp_json_encode() for logging instead of print_r()"
+            },
+            "examples": {
+                "before": "error_log('Debug message');",
+                "after": "if (defined('WP_DEBUG') && WP_DEBUG) { error_log('Debug message'); }"
+            }
+        },
+        "fileStructure": {
+            "rule": "Maintain proper WordPress plugin directory structure",
+            "requirements": {
+                "hiddenFiles": "NO hidden files (starting with .) allowed",
+                "languagesDirectory": "Must exist and contain non-hidden placeholder file",
+                "domainPath": "Header must point to existing directory",
+                "textDomain": "Must match plugin folder name or be explicitly approved"
+            },
+            "solutions": {
+                "languagesDirPlaceholder": "Create languages/readme.txt instead of .gitkeep",
+                "removeHiddenFiles": "Delete .gitignore, .gitkeep, .DS_Store, etc."
+            }
+        },
+        "headers": {
+            "rule": "Plugin headers must be valid and point to existing resources",
+            "required": ["Plugin Name", "Description", "Version", "Author"],
+            "optional": ["Plugin URI", "Author URI", "Text Domain", "Domain Path", "Requires at least", "Tested up to"],
+            "validation": {
+                "domainPath": "Must point to existing directory",
+                "textDomain": "Must be consistent throughout all files",
+                "network": "Remove 'Network: false' - only use 'Network: true' if actually supports multisite"
+            }
+        },
+        "textDomain": {
+            "rule": "Text domain must be consistent across all files and match expectations",
+            "pattern": "Prefer plugin folder name, but be consistent",
+            "functions": ["__(), _e(), esc_html__(), esc_attr__(), _n(), _x()"],
+            "validation": "All translation function calls must use the same text domain"
+        }
+    },
+    "automatedChecks": {
+        "description": "Run these checks before any plugin submission",
+        "checklist": [
+            "✓ All Exception messages wrapped in esc_html()",
+            "✓ All $_POST/$_GET input sanitized with isset() and wp_unslash()",
+            "✓ All nonce verification uses sanitized input",
+            "✓ No direct file operations (use WP_Filesystem)",
+            "✓ No development functions (error_log, print_r, var_dump)",
+            "✓ No hidden files (.gitignore, .gitkeep, .DS_Store)",
+            "✓ Languages directory exists with non-hidden placeholder",
+            "✓ Text domain consistent across all files",
+            "✓ Plugin headers point to existing resources",
+            "✓ All output properly escaped",
+            "✓ Version numbers updated in constants and headers",
+            "✓ AMPRE API calls properly rate limited and cached",
+            "✓ WordPress cron events properly scheduled and cleaned up",
+            "✓ No duplicate function declarations",
+            "✓ Run 'php -l' syntax check on all PHP files",
+            "✓ Run 'wp eval' test after major changes",
+            "✓ Test API queries with curl before implementing in code",
+            "✓ Verify incremental sync works with ModificationTimestamp",
+            "✓ Confirm member-based categorization creates correct categories",
+            "✓ Test both web dashboard and WP-CLI sync functionality",
+            "✓ Validate settings migration when schema changes",
+            "✓ Verify template placeholders are properly replaced in post content",
+            "✓ Test activation/deactivation cron scheduling and cleanup",
+            "✓ Check actual post content with wp-cli to verify placeholder replacement",
+            "✓ Ensure shortcodes are preserved (not processed) during post creation",
+            "✓ Test address parsing for street number, name, and unit extraction",
+            "✓ Verify dynamic content (virtual tours, WalkScore) only shows when data available",
+            "✓ Test plugin works with multiple page builders (Visual Composer, Elementor, etc.)",
+            "✓ Run security audit: grep for unescaped wp_create_nonce() calls",
+            "✓ Run security audit: grep for unescaped exception messages",
+            "✓ Run dead code audit: identify and remove unused functions/methods",
+            "✓ Run duplication audit: identify and consolidate duplicate code",
+            "✓ Verify all JavaScript output uses esc_js() for nonces and dynamic content",
+            "✓ Check for duplicate settings registration between main and admin classes",
+            "✓ Verify consistent bearer token handling across all components",
+            "✓ Ensure all tests pass with zero tolerance for failures (composer test)",
+            "✓ Verify no wrapper functions that just call other functions exist",
+            "✓ Check for scattered authentication/encryption logic that should be centralized"
+        ]
+    },
+    "emergencyFixes": {
+        "description": "Quick fixes for common WordPress.org plugin checker failures",
+        "commands": {
+            "escapeExceptions": "Find all 'throw new Exception' and wrap messages in esc_html()",
+            "sanitizeInput": "Find all $_POST/$_GET and add isset(), wp_unslash(), sanitize_text_field()",
+            "conditionalDebug": "Wrap error_log() in if (defined('WP_DEBUG') && WP_DEBUG)",
+            "removeHidden": "Delete all files starting with . (dot)",
+            "createLanguagesPlaceholder": "Create languages/readme.txt if languages/.gitkeep exists",
+            "escapeJavaScriptNonces": "Find wp_create_nonce() in JavaScript and wrap with esc_js()",
+            "removeWrapperFunctions": "Find and remove simple wrapper functions that just call other functions",
+            "consolidateDuplicateSettings": "Identify duplicate settings registration and consolidate",
+            "removeDeadCode": "Use grep to find unused functions and remove them systematically",
+            "centralizeTokenHandling": "Move scattered bearer token logic into centralized service"
+        }
+    },
+    "developmentBestPractices": {
+        "description": "Critical development practices learned from building this plugin",
+        "settingsAPI": {
+            "rule": "Always use WordPress Settings API properly",
+            "formStructure": "Form action='options.php', settings_fields(), do_settings_sections()",
+            "fieldNames": "Use 'plugin_settings[field_name]' format for all input names",
+            "saveButton": "Use submit_button() function inside form element",
+            "successMessage": "Add add_settings_error() in sanitize callback for confirmation",
+            "defaults": "Set proper default values to prevent validation errors"
+        },
+        "ajaxSecurity": {
+            "rule": "AJAX nonce consistency is critical",
+            "pattern": "Use same nonce action in wp_create_nonce() and wp_verify_nonce()",
+            "example": "JavaScript: wp_create_nonce('plugin_nonce'), PHP: wp_verify_nonce(..., 'plugin_nonce')",
+            "critical": "Mismatched nonces cause 401 errors and broken functionality"
+        },
+        "loggingSystem": {
+            "rule": "Implement comprehensive logging for debugging",
+            "structure": "Custom log directory in wp-content/uploads/plugin-logs/",
+            "protection": "Add .htaccess to prevent direct access to log files",
+            "rotation": "Implement log rotation when files exceed 5MB",
+            "functions": "Separate functions for logging, retrieving, and clearing logs",
+            "levels": "Support info, warning, error levels with context data"
+        },
+        "functionDuplication": {
+            "rule": "NEVER declare the same function twice",
+            "check": "Use grep to find duplicate function declarations before adding new ones",
+            "solution": "Remove old implementations when adding new ones",
+            "testing": "Always run 'php -l' after function changes"
+        },
+        "menuIntegration": {
+            "rule": "Properly integrate with existing Shift8 menu structure",
+            "pattern": "Check if main menu exists before creating, add submenu items only",
+            "duplication": "Avoid creating duplicate menu items by checking $GLOBALS['admin_page_hooks']",
+            "testing": "Deactivate/reactivate plugin to clear WordPress menu cache"
+        },
+        "userExperience": {
+            "rule": "Eliminate annoying user interface behaviors",
+            "unsavedWarnings": "Don't show 'unsaved changes' warnings on every field change",
+            "feedback": "Always provide clear success/error messages for user actions",
+            "testing": "Actually test every button and form to ensure they work as expected"
+        },
+        "tokenHandling": {
+            "rule": "Handle JWT tokens intelligently for both encrypted and plain text scenarios",
+            "detection": "Check if token starts with 'eyJ' to identify JWT format",
+            "encryption": "Encrypt tokens for storage but handle plain JWT gracefully",
+            "consistency": "Ensure web dashboard and WP-CLI use identical token processing logic",
+            "fallback": "Implement smart fallback for tokens that may be stored in different formats"
+        },
+        "settingsEvolution": {
+            "rule": "Handle settings schema changes gracefully during plugin updates",
+            "migration": "Provide migration logic when removing or renaming settings fields",
+            "defaults": "Always set sensible defaults for new settings to prevent validation errors",
+            "cleanup": "Remove obsolete settings from database during updates",
+            "testing": "Test settings page with both old and new setting structures"
+        }
+    },
+    "testingProtocol": {
+        "description": "Mandatory testing steps after major changes - ZERO TOLERANCE FOR FAILURES",
+        "zeroTolerancePolicy": {
+            "rule": "ABSOLUTELY NO test failures are acceptable - 0 errors, 0 failures, 0 exceptions",
+            "enforcement": "Every single test must pass before any code is considered complete",
+            "process": [
+                "Run 'php -l' syntax check on all modified files",
+                "Run 'wp eval \"echo 'WordPress loads OK';\"' after ANY significant changes",
+                "Run 'composer test' after every change",
+                "Fix ALL failures immediately - no exceptions",
+                "Never accept 'mostly working' or 'good enough' test results",
+                "Each failure must be investigated and resolved completely",
+                "Update mocks, fix logic errors, correct assertions - whatever it takes"
+            ]
+        },
+        "mandatoryChecks": {
+            "rule": "ALWAYS run these checks after significant code changes",
+            "order": [
+                "1. PHP syntax check: php -l [modified-files]",
+                "2. WordPress load test: wp eval \"echo 'WordPress loads OK';\"",
+                "3. Plugin class test: wp eval \"if (class_exists('Shift8_TREB')) echo 'Plugin loads OK'; else echo 'PLUGIN LOAD FAILED';\"",
+                "4. Unit tests: composer test"
+            ],
+            "critical": "If ANY check fails, STOP and fix immediately before proceeding"
+        },
+        "syntaxCheck": {
+            "command": "php -l filename.php",
+            "description": "Check for PHP syntax errors in all modified files"
+        },
+        "wordpressEval": {
+            "command": "wp eval \"echo 'Test passed';\"",
+            "description": "Verify WordPress can load without fatal errors"
+        },
+        "pluginLoad": {
+            "command": "wp eval \"if (class_exists('Plugin_Class')) echo 'OK'; else echo 'FAIL';\"",
+            "description": "Verify main plugin class loads correctly"
+        },
+        "testExecution": {
+            "command": "composer test",
+            "requirement": "MUST show 'OK (X tests, Y assertions)' with NO errors or failures",
+            "failureResponse": "Immediately investigate and fix every single failure"
+        },
+        "functionalTesting": {
+            "description": "Manual testing checklist",
+            "steps": [
+                "Test settings save button works and shows success message",
+                "Test API connection button works without 401 errors",
+                "Test manual sync button works and generates logs",
+                "Test log viewer shows actual log content",
+                "Test clear logs function works",
+                "Verify no duplicate menu items appear",
+                "Test WP-CLI commands work properly"
+            ]
+        }
+    },
+    "wpCliIntegration": {
+        "description": "WP-CLI command implementation best practices",
+        "commandStructure": {
+            "rule": "Create comprehensive CLI commands for all major plugin functions",
+            "pattern": "Use WP_CLI::add_command() to register command classes",
+            "organization": "Separate CLI class in includes/class-plugin-cli.php",
+            "conditional": "Only load CLI class when WP-CLI is available: if (defined('WP_CLI') && WP_CLI)"
+        },
+        "commandFeatures": {
+            "helpText": "Provide detailed help text with examples for all commands",
+            "options": "Support --dry-run, --verbose, --limit, --force options where appropriate",
+            "progressBars": "Use WP_CLI\\Utils\\make_progress_bar for long operations",
+            "formatting": "Support multiple output formats (table, json, yaml) for data commands",
+            "errorHandling": "Use WP_CLI::error() for fatal errors, WP_CLI::warning() for non-fatal issues"
+        },
+        "commonCommands": {
+            "sync": "Manual sync with dry-run capability and progress tracking",
+            "settings": "Display current plugin configuration",
+            "test": "Test external API connections",
+            "logs": "View and manage log files",
+            "clear": "Clear caches, logs, or reset data with confirmation prompts"
+        },
+        "security": {
+            "rule": "CLI commands should respect WordPress permissions and plugin settings",
+            "validation": "Validate all input parameters and provide meaningful error messages",
+            "confirmation": "Use WP_CLI::confirm() for destructive operations unless --yes flag is used"
+        }
+    },
+    "loggingBestPractices": {
+        "description": "Comprehensive logging system implementation",
+        "fileStructure": {
+            "location": "wp-content/uploads/plugin-name-logs/",
+            "protection": "Always create .htaccess to deny direct access",
+            "rotation": "Implement automatic log rotation at 5MB with backup retention",
+            "naming": "Use descriptive log file names (plugin-sync.log, not debug.log)"
+        },
+        "logLevels": {
+            "info": "General operational messages and successful operations",
+            "warning": "Non-fatal issues that should be noted",
+            "error": "Fatal errors and exceptions that prevent operation",
+            "context": "Always include relevant context data as second parameter"
+        },
+        "functions": {
+            "write": "Centralized logging function with level support and context",
+            "read": "Function to retrieve recent log entries with line limits",
+            "clear": "Function to safely clear logs with user confirmation",
+            "rotate": "Automatic rotation when files exceed size limits"
+        },
+        "integration": {
+            "rule": "Log all major operations, API calls, and user actions",
+            "timing": "Log start and completion of long operations",
+            "errors": "Always log exceptions with full context and stack traces",
+            "debugging": "Respect debug mode settings but always log errors/warnings"
+        }
+    },
+    "apiIntegrationPatterns": {
+        "description": "Best practices for external API integration",
+        "serviceClasses": {
+            "rule": "Create dedicated service classes for each external API",
+            "structure": "Separate connection testing, data fetching, and error handling methods",
+            "configuration": "Accept settings array in constructor for flexibility",
+            "caching": "Implement appropriate caching for API responses"
+        },
+        "errorHandling": {
+            "rule": "Graceful degradation when APIs are unavailable",
+            "logging": "Log all API errors with request/response details",
+            "retries": "Implement exponential backoff for transient failures",
+            "fallbacks": "Provide meaningful fallback behavior when APIs fail"
+        },
+        "authentication": {
+            "rule": "Securely handle API credentials and tokens",
+            "storage": "Encrypt sensitive credentials before database storage",
+            "transmission": "Use proper headers and HTTPS for API communication",
+            "validation": "Test credentials before saving and provide clear feedback"
+        }
+    },
+    "externalApiPatterns": {
+        "description": "Patterns learned from AMPRE API integration",
+        "curlTesting": {
+            "rule": "ALWAYS test API queries with curl before coding",
+            "process": [
+                "Test basic connectivity with simple queries",
+                "Validate filter syntax and parameter encoding",
+                "Confirm response structure matches expectations",
+                "Test edge cases like empty results and error responses"
+            ],
+            "benefits": "Prevents 400/401 errors and saves debugging time"
+        },
+        "incrementalSync": {
+            "rule": "Implement timestamp-based incremental synchronization",
+            "pattern": "Store last_sync_timestamp and use ModificationTimestamp ge [timestamp]",
+            "fallback": "Use listing_age_days filter when no previous sync timestamp exists",
+            "efficiency": "Dramatically reduces API calls and processing time for large datasets"
+        },
+        "memberBasedCategorization": {
+            "rule": "Use agent/member ID for automatic content categorization",
+            "implementation": "Compare ListAgentKey with configured member_id for ownership determination",
+            "categories": "Own listings → 'Listings', others → 'OtherListings'",
+            "scalability": "Supports comma-separated member IDs (e.g., '2229166,9580044') for multiple agents",
+            "parsing": "Use array_map('trim', explode(',', $member_ids)) and in_array() for matching"
+        },
+        "queryStructureCompliance": {
+            "rule": "Follow API documentation query patterns exactly",
+            "ordering": "Use documented $orderby patterns (ModificationTimestamp,ListingKey)",
+            "filtering": "Use proper OData syntax without double URL encoding",
+            "expansion": "Avoid unsupported $expand operations that cause 400 errors",
+            "testing": "Validate each query component individually before combining"
+        }
+    },
+    "templatePlaceholderSystems": {
+        "description": "Best practices for template placeholder replacement and content generation",
+        "placeholderMismatch": {
+            "rule": "Always investigate template vs code placeholder mismatches",
+            "process": [
+                "Examine actual post content to identify which placeholders are not being replaced",
+                "Compare template placeholders with code replacement arrays",
+                "Add missing placeholders to maintain backward compatibility",
+                "Support both old and new placeholder formats for flexibility"
+            ],
+            "example": "Template uses %MLSNUMBER% but code replaces %MLS% - add both for compatibility"
+        },
+        "addressParsing": {
+            "rule": "Implement robust address parsing for street components",
+            "components": "Extract street number, street name, and unit from full address",
+            "patterns": "Use regex patterns for common address formats (Unit, Apt, Suite, #)",
+            "fallbacks": "Provide empty strings for missing components to prevent template errors"
+        },
+        "dynamicContent": {
+            "rule": "Generate dynamic content based on listing data availability",
+            "conditionalContent": "Only show virtual tours, WalkScore, etc. if data is available",
+            "gracefulDegradation": "Return empty strings for missing data rather than errors",
+            "extensibility": "Design placeholder system to easily add new dynamic content types"
+        },
+        "shortcodeCompatibility": {
+            "rule": "Ensure template content works with all page builders",
+            "preservation": "Store shortcodes as-is in post content, don't process during save",
+            "processing": "Let WordPress and page builders handle shortcode processing on display",
+            "universality": "Template system should work with Visual Composer, Elementor, Gutenberg, Bricks"
+        }
+    },
+    "debuggingPatterns": {
+        "description": "Systematic debugging approaches for complex plugin issues",
+        "placeholderDebugging": {
+            "rule": "Use wp-cli to examine actual post content when placeholders aren't working",
+            "commands": [
+                "wp post list --meta_key=listing_mls_number --fields=ID,post_title,post_content",
+                "wp post get [ID] --field=post_content | head -20",
+                "Compare template expectations with actual replacement arrays"
+            ],
+            "analysis": "Look for patterns in what's replaced vs what's not replaced"
+        },
+        "cronDebugging": {
+            "rule": "Use wp-cli cron commands to verify scheduling and execution",
+            "commands": [
+                "wp cron event list | grep [plugin]",
+                "wp cron schedule list | grep [plugin]",
+                "wp plugin deactivate/activate to test activation hooks"
+            ],
+            "verification": "Always test activation/deactivation cron management"
+        },
+        "apiDebugging": {
+            "rule": "Test API queries with curl before implementing in code",
+            "process": [
+                "Test basic connectivity and authentication",
+                "Validate query parameters and response structure",
+                "Test edge cases and error conditions",
+                "Implement incremental complexity (simple → complex queries)"
+            ],
+            "benefits": "Prevents 400/401 errors and saves debugging time in code"
+        }
+    },
+    "activationDeactivationPatterns": {
+        "description": "Best practices for plugin lifecycle management",
+        "cronManagement": {
+            "rule": "Always schedule cron jobs on activation and clear on deactivation",
+            "activation": "Call schedule_sync() or equivalent in activate() method",
+            "deactivation": "Use wp_clear_scheduled_hook() to clean up all plugin events",
+            "testing": "Test deactivate/activate cycle to ensure proper cleanup and rescheduling"
+        },
+        "settingsInitialization": {
+            "rule": "Set sensible defaults on activation, preserve user settings",
+            "defaults": "Use add_option() to set defaults without overwriting existing settings",
+            "migration": "Handle settings schema changes gracefully during updates",
+            "cleanup": "Consider whether to preserve or clean settings on deactivation"
+        },
+        "directoryCreation": {
+            "rule": "Create necessary directories and files on activation",
+            "uploads": "Create plugin-specific upload directories for logs, images, etc.",
+            "permissions": "Use wp_mkdir_p() and check directory permissions",
+            "protection": "Add .htaccess files to protect sensitive directories"
+        }
+    },
+    "testMaintenancePatterns": {
+        "description": "Patterns for maintaining test suites during feature evolution",
+        "settingsSchemaChanges": {
+            "rule": "Update test settings when removing/adding configuration fields",
+            "process": [
+                "Identify all test files that use old settings structure",
+                "Update test settings arrays to match new schema",
+                "Modify test assertions to expect new query parameters",
+                "Remove tests for deprecated functionality"
+            ],
+            "critical": "Test failures after settings changes indicate incomplete migration"
+        },
+        "mockingEvolution": {
+            "rule": "Evolve WordPress function mocks as plugin functionality grows",
+            "additions": "Add new WordPress function mocks when introducing new features",
+            "organization": "Group related mocks together (e.g., post functions, category functions)",
+            "coverage": "Ensure all WordPress functions used in code have corresponding mocks"
+        },
+        "complexMethodTesting": {
+            "rule": "Test complex methods pragmatically in constrained environments",
+            "approach": "Focus on business logic validation rather than complete integration testing",
+            "examples": {
+                "fileOperations": "Test URL validation and error handling rather than complete file upload flow",
+                "apiIntegration": "Test query building and response parsing rather than actual HTTP calls",
+                "imageProcessing": "Test validation logic rather than complete WordPress media library integration"
+            },
+            "rationale": "Complex WordPress integrations are difficult to mock completely in unit tests"
+        }
+    },
+    "categoryManagementPatterns": {
+        "description": "Best practices for WordPress category and taxonomy management",
+        "dynamicCategorization": {
+            "rule": "Implement dynamic category assignment based on business rules",
+            "implementation": "Use agent/member ID matching for automatic categorization",
+            "categories": "Create meaningful category names (e.g., 'Listings' vs 'OtherListings')",
+            "debugging": "Add debug logging to category assignment logic for troubleshooting"
+        },
+        "categoryCreation": {
+            "rule": "Automatically create categories when they don't exist",
+            "pattern": "Use get_category_by_slug() first, then wp_insert_category() if needed",
+            "errorHandling": "Handle category creation failures gracefully",
+            "consistency": "Ensure category names are consistent across the application"
+        }
+    },
+    "conditionalApiIntegration": {
+        "description": "Best practices for optional third-party API integrations",
+        "apiKeyValidation": {
+            "rule": "Always check for API key presence before attempting API calls",
+            "pattern": "if (empty($this->settings['api_key'])) { return fallback_value; }",
+            "examples": {
+                "geocoding": "Only attempt Google Maps geocoding if API key is configured",
+                "walkscore": "Only generate WalkScore widgets if both API key and ID are present"
+            }
+        },
+        "gracefulDegradation": {
+            "rule": "Provide meaningful fallbacks when APIs are unavailable",
+            "geocoding": "Fall back to default coordinates (e.g., Toronto) when geocoding fails",
+            "widgets": "Return empty string for widget code when API credentials are missing",
+            "caching": "Cache API responses to reduce dependency on external services"
+        }
+    },
+    "universalTemplateDesign": {
+        "description": "Patterns for creating page builder agnostic template systems",
+        "placeholderSystem": {
+            "rule": "Design placeholder systems that work across different page builders",
+            "approach": "Use WordPress native systems (featured images, galleries) as foundation",
+            "placeholders": "Provide multiple placeholder formats for different use cases",
+            "examples": {
+                "images": "%FEATURED_IMAGE%, %IMAGE_GALLERY%, %LISTING_IMAGE_1%, %BASE64IMAGES%",
+                "coordinates": "%MAPLAT%, %MAPLNG% with geocoding fallbacks",
+                "widgets": "%WALKSCORECODE% with conditional generation"
+            }
+        },
+        "pageBuilderCompatibility": {
+            "rule": "Store content in post_content for universal compatibility",
+            "rationale": "All page builders fall back to rendering post_content if they don't have custom data",
+            "shortcodes": "Store shortcodes as-is, let WordPress process them on display",
+            "universality": "Template system should work with Visual Composer, Elementor, Gutenberg, Bricks"
+        }
+    },
+    "codeDuplicationPrevention": {
+        "description": "Critical patterns learned today to prevent code duplication and maintain DRY principles",
+        "sharedServicePattern": {
+            "rule": "Create shared service classes for complex operations used by multiple components",
+            "implementation": "Extract common logic into dedicated service classes (e.g., Sync_Service)",
+            "benefits": "Eliminates duplication between CLI, Cron, and Admin operations",
+            "example": "CLI and Cron sync both use Shift8_TREB_Sync_Service instead of duplicating 200+ lines",
+            "testability": "Shared services are easier to unit test and mock"
+        },
+        "serviceFactoryPattern": {
+            "rule": "Use factory methods or dependency injection for service instantiation",
+            "avoidDuplication": "Don't repeat require_once and new Class() patterns across files",
+            "centralization": "Centralize service creation and configuration in one place",
+            "consistency": "Ensures all components use services with identical configuration"
+        },
+        "settingsManagementPattern": {
+            "rule": "Centralize settings processing and validation logic",
+            "avoidDuplication": "Don't repeat settings loading, decryption, and validation logic",
+            "implementation": "Create prepare_settings() methods in service classes",
+            "benefits": "Consistent settings handling across CLI, Cron, and Admin interfaces"
+        },
+        "errorHandlingPattern": {
+            "rule": "Create shared error handling and logging utilities",
+            "avoidDuplication": "Don't repeat try-catch patterns and logging calls",
+            "implementation": "Standardize error handling in service classes",
+            "consistency": "Uniform error messages and logging across all components"
+        }
+    },
+    "securityBestPracticesLearned": {
+        "description": "Security patterns reinforced and learned during today's development",
+        "inputSanitizationConsistency": {
+            "rule": "ALWAYS sanitize exception messages and user input consistently",
+            "pattern": "Use esc_html() even for exception messages: esc_html($e->getMessage())",
+            "rationale": "Exception messages can contain user input and must be escaped",
+            "testing": "Unit tests must mock esc_html() to catch missing sanitization"
+        },
+        "functionMockingForSecurity": {
+            "rule": "Mock ALL WordPress security functions in tests to catch missing sanitization",
+            "functions": ["esc_html()", "esc_attr()", "esc_js()", "sanitize_text_field()"],
+            "implementation": "Add mocks to tests/bootstrap.php and individual test setUp() methods",
+            "benefits": "Tests fail immediately when security functions are missing"
+        },
+        "settingsSecurityPattern": {
+            "rule": "Implement secure settings handling with proper encryption and validation",
+            "encryption": "Always encrypt sensitive data (bearer tokens) before storage",
+            "validation": "Sanitize and validate all settings input with proper bounds checking",
+            "preservation": "Preserve existing encrypted values when form fields are empty"
+        },
+        "apiCredentialHandling": {
+            "rule": "Handle API credentials securely with intelligent detection",
+            "detection": "Detect plain vs encrypted tokens intelligently (e.g., JWT format detection)",
+            "storage": "Always store in encrypted format, decrypt only when needed",
+            "fallback": "Provide graceful fallback for different token formats during migration"
+        }
+    },
+    "testingBestPracticesReinforced": {
+        "description": "Testing patterns that proved critical for maintaining code quality",
+        "zeroTolerancePolicy": {
+            "rule": "ABSOLUTELY ZERO test failures are acceptable - 0 errors, 0 failures, 0 exceptions",
+            "enforcement": "Every single test must pass before any code is considered complete",
+            "process": [
+                "Run 'php -l' syntax check on all modified files",
+                "Run 'composer test' after every change",
+                "Fix ALL failures immediately - no exceptions",
+                "Each failure must be investigated and resolved completely"
+            ],
+            "learned": "Today we went from 27 errors + 5 failures to 62 tests passing with 139 assertions"
+        },
+        "comprehensiveTestCoverage": {
+            "rule": "Add tests for ALL new methods and features immediately",
+            "newFeatures": "Every new method needs corresponding unit tests",
+            "mockingStrategy": "Mock ALL WordPress functions used in new code",
+            "edgeCases": "Test both success and failure scenarios, empty inputs, and boundary conditions"
+        },
+        "testMaintenancePatterns": {
+            "rule": "Update tests immediately when refactoring or changing functionality",
+            "settingsChanges": "Update test settings when removing/adding configuration fields",
+            "methodRenames": "Update reflection calls when private method names change",
+            "mockEvolution": "Add new WordPress function mocks when introducing new features"
+        }
+    },
+    "performanceOptimizationPatterns": {
+        "description": "Performance patterns learned during image processing and sync optimization",
+        "batchProcessingPattern": {
+            "rule": "Implement batch processing for I/O intensive operations",
+            "implementation": "Process items in small batches (3-5) with short delays between batches",
+            "benefits": "Simulates concurrency, reduces memory usage, prevents server overload",
+            "example": "Image downloads went from sequential to batched processing for 3x speed improvement"
+        },
+        "conditionalProcessingPattern": {
+            "rule": "Make expensive operations conditional with settings flags",
+            "implementation": "Add skip_image_download and batch_image_processing flags",
+            "benefits": "Allows fast sync modes and performance tuning based on needs",
+            "userExperience": "Provide CLI flags for different performance modes"
+        },
+        "timeoutOptimization": {
+            "rule": "Optimize timeouts for external API calls based on use case",
+            "implementation": "Use shorter timeouts (8-10s) for non-critical operations like images",
+            "benefits": "Prevents slow external services from blocking entire sync process",
+            "fallback": "Always provide fallback behavior when timeouts occur"
+        }
+    },
+    "securityAuditProtocol": {
+        "description": "Comprehensive security audit procedures based on WordPress.org plugin directory requirements",
+        "criticalSecurityIssues": {
+            "rule": "Identify and fix critical security vulnerabilities immediately",
+            "xssVulnerabilities": {
+                "issue": "Unescaped output in JavaScript and HTML contexts",
+                "detection": "Look for wp_create_nonce(), dynamic content in JS, unescaped variables",
+                "fixes": ["Wrap wp_create_nonce() with esc_js() in JavaScript", "Use esc_html() for all dynamic content", "Escape all exception messages with esc_html()"],
+                "priority": "CRITICAL - Fix immediately"
+            },
+            "inconsistentEscaping": {
+                "issue": "Some dynamic content escaped, others not",
+                "detection": "Search for throw new Exception(), echo statements, HTML attributes",
+                "fixes": ["Wrap ALL exception messages in esc_html()", "Escape all variables in HTML context", "Use esc_attr() for HTML attributes"],
+                "priority": "CRITICAL - Fix immediately"
+            },
+            "legacyInsecureCode": {
+                "issue": "Old code patterns that don't follow current security standards",
+                "detection": "Look for unused methods, duplicate logic, inconsistent patterns",
+                "fixes": ["Remove unused methods", "Consolidate duplicate security logic", "Apply consistent escaping patterns"],
+                "priority": "HIGH - Fix during refactoring"
+            }
+        },
+        "auditChecklist": {
+            "rule": "Run comprehensive security audit before any release",
+            "steps": [
+                "1. Search for all wp_create_nonce() calls and ensure esc_js() wrapping",
+                "2. Search for all 'throw new Exception' and ensure esc_html() on messages",
+                "3. Search for all echo/print statements and verify escaping",
+                "4. Search for all HTML attributes and verify esc_attr() usage",
+                "5. Review all $_POST/$_GET handling for sanitization",
+                "6. Check all nonce verification patterns",
+                "7. Verify capability checks on all admin functions",
+                "8. Review file operation security (use WP_Filesystem)",
+                "9. Check for exposed endpoints or direct file access"
+            ]
+        },
+        "automatedSecurityScanning": {
+            "rule": "Use grep patterns to find common security issues",
+            "patterns": {
+                "unescapedNonces": "grep -r \"wp_create_nonce\" --include=\"*.php\" | grep -v \"esc_js\"",
+                "unescapedExceptions": "grep -r \"throw new Exception\" --include=\"*.php\" | grep -v \"esc_html\"",
+                "directOutput": "grep -r \"echo \\|print \" --include=\"*.php\" | grep -v \"esc_\"",
+                "unsanitizedInput": "grep -r \"\\$_POST\\|\\$_GET\" --include=\"*.php\" | grep -v \"sanitize_\\|wp_unslash\""
+            }
+        }
+    },
+    "deadCodeAuditProtocol": {
+        "description": "Systematic approach to identifying and removing unused code",
+        "identificationProcess": {
+            "rule": "Use systematic analysis to find unused code",
+            "steps": [
+                "1. List all function definitions: grep -r \"function \" --include=\"*.php\"",
+                "2. List all class methods: grep -r \"public function\\|private function\\|protected function\"",
+                "3. Search for usage of each function across codebase",
+                "4. Identify functions only called from other unused functions",
+                "5. Check for unused variables, constants, and includes"
+            ]
+        },
+        "safeRemovalCriteria": {
+            "rule": "Only remove code that is definitively unused",
+            "criteria": [
+                "Function has zero references in codebase",
+                "Method is not called by any other methods",
+                "Not part of WordPress hooks or callbacks",
+                "Not used in templates or external integrations",
+                "Not part of public API or interface"
+            ]
+        },
+        "removalProcess": {
+            "rule": "Remove dead code systematically with verification",
+            "steps": [
+                "1. Remove the unused function/method",
+                "2. Run php -l syntax check on modified files",
+                "3. Run full test suite to verify no regressions",
+                "4. Test core functionality manually",
+                "5. Document removal in commit message"
+            ]
+        },
+        "commonDeadCodePatterns": {
+            "rule": "Recognize common patterns of dead code",
+            "patterns": [
+                "Wrapper functions that just call other functions",
+                "Methods created during development but never integrated",
+                "Duplicate implementations of same functionality",
+                "Legacy code replaced by newer implementations",
+                "Helper functions that are no longer needed"
+            ]
+        }
+    },
+    "codeDuplicationAuditProtocol": {
+        "description": "Systematic approach to identifying and consolidating duplicate code",
+        "duplicationIdentificationProcess": {
+            "rule": "Use systematic analysis to find code duplication",
+            "steps": [
+                "1. Identify functions with similar names or purposes",
+                "2. Compare method implementations for similar logic",
+                "3. Look for repeated patterns in settings handling",
+                "4. Find duplicate validation/sanitization logic",
+                "5. Identify scattered authentication/encryption code"
+            ]
+        },
+        "riskAssessmentMatrix": {
+            "rule": "Assess consolidation risk before making changes",
+            "lowRisk": {
+                "criteria": ["Simple wrapper functions", "Identical logic with no context differences", "Pure utility functions"],
+                "action": "Safe to consolidate immediately",
+                "examples": ["Logging wrapper functions", "Common sanitization patterns"]
+            },
+            "mediumRisk": {
+                "criteria": ["Similar logic but different contexts", "Shared core logic with different error handling", "Different parameter validation"],
+                "action": "Consolidate with careful testing",
+                "examples": ["Image processing methods", "API request handling"]
+            },
+            "highRisk": {
+                "criteria": ["Different business logic", "Different security requirements", "Core functionality differences"],
+                "action": "Requires careful analysis and extensive testing",
+                "examples": ["Settings registration", "Authentication handling"]
+            }
+        },
+        "consolidationStrategies": {
+            "rule": "Choose appropriate consolidation strategy based on risk",
+            "strategies": {
+                "extractCommonMethod": "Extract shared logic into private method called by both functions",
+                "createServiceClass": "Move complex shared logic into dedicated service class",
+                "useFactoryPattern": "Centralize object creation and configuration",
+                "createUtilityClass": "Group related utility functions into static class"
+            }
+        },
+        "consolidationProcess": {
+            "rule": "Follow systematic process for safe consolidation",
+            "steps": [
+                "1. Identify exact differences between duplicate code",
+                "2. Design consolidation strategy (extract method, service class, etc.)",
+                "3. Implement consolidation with backward compatibility",
+                "4. Update all references to use consolidated code",
+                "5. Run comprehensive tests (syntax, unit, functional)",
+                "6. Remove original duplicate code",
+                "7. Verify no regressions in functionality"
+            ]
+        }
+    },
+    "codeQualityMaintenance": {
+        "description": "Ongoing practices to maintain high code quality and prevent technical debt",
+        "preventiveMeasures": {
+            "rule": "Implement practices to prevent code quality issues",
+            "practices": [
+                "Review all new functions for potential duplication before adding",
+                "Use consistent naming conventions to avoid similar functions",
+                "Implement shared services for complex operations from the start",
+                "Create utility classes for common operations",
+                "Document function purposes to avoid reimplementation"
+            ]
+        },
+        "regularAudits": {
+            "rule": "Schedule regular code quality audits",
+            "frequency": "After every major feature addition or monthly",
+            "audits": [
+                "Dead code audit using grep patterns",
+                "Duplication audit comparing similar functions",
+                "Security audit using automated scanning patterns",
+                "Performance audit for optimization opportunities",
+                "Test coverage audit for missing tests"
+            ]
+        },
+        "refactoringGuidelines": {
+            "rule": "Follow safe refactoring practices",
+            "principles": [
+                "Make small, incremental changes",
+                "Test after each refactoring step",
+                "Maintain backward compatibility when possible",
+                "Document breaking changes clearly",
+                "Use feature flags for risky changes"
+            ]
+        }
+    },
+    "googleMapsIntegrationPatterns": {
+        "description": "Best practices for Google Maps integration in WordPress plugins",
+        "conditionalDisplay": {
+            "rule": "Only display maps when all requirements are met",
+            "requirements": ["Google Maps API key configured", "Valid coordinates available", "Single post context"],
+            "implementation": "Use helper functions like shift8_treb_has_google_maps_api_key() and shift8_treb_has_listing_coordinates()",
+            "avoidConflicts": "Only enqueue scripts on single listing posts to prevent JavaScript conflicts"
+        },
+        "wordpressNamingConventions": {
+            "rule": "Follow WordPress function naming conventions for uniqueness",
+            "pattern": "prefix_plugin_function_name (e.g., shift8_treb_init_map)",
+            "avoidGeneric": "Don't use generic names like initMap() that could conflict with other plugins",
+            "consistency": "Apply consistent naming across all JavaScript functions and callbacks"
+        },
+        "placeholderSystem": {
+            "rule": "Integrate maps seamlessly with template placeholder system",
+            "placeholder": "%GOOGLEMAPCODE% - generates conditional map HTML",
+            "htmlStructure": "Use semantic HTML: <div class=\"shift8-treb-googlemap\" id=\"shift8-treb-map\">",
+            "fallback": "Return empty string when requirements not met for graceful degradation"
+        }
+    },
+    "directMlsImportPatterns": {
+        "description": "Patterns for implementing direct MLS import functionality",
+        "cliCommandDesign": {
+            "rule": "Create intuitive CLI commands for direct operations",
+            "pattern": "wp shift8-treb import MLS1,MLS2,MLS3",
+            "options": "Support --dry-run, --verbose, --limit for flexibility",
+            "feedback": "Provide clear progress indicators and summary statistics"
+        },
+        "codeReuse": {
+            "rule": "Reuse existing sync logic to avoid duplication",
+            "implementation": "Use shared service classes (e.g., Sync_Service) for core logic",
+            "benefits": "Ensures identical processing between normal sync and direct import",
+            "testing": "Same test coverage applies to both sync methods"
+        },
+        "orphanedImageHandling": {
+            "rule": "Handle orphaned images from previous imports gracefully",
+            "detection": "Check for existing images with post_parent = 0",
+            "correction": "Implement auto-correction to attach orphaned images to correct posts",
+            "logging": "Log post_parent mismatches for debugging and monitoring"
+        }
+    },
+    "apiDiagnosticsPatterns": {
+        "description": "Patterns for implementing API diagnostic tools",
+        "rawDataAnalysis": {
+            "rule": "Provide raw API response analysis without full processing",
+            "implementation": "Create analyze command that fetches data without creating posts",
+            "benefits": "Fast diagnostics, troubleshooting without side effects",
+            "features": "Support filtering, searching, agent analysis, date ranges"
+        },
+        "performanceOptimization": {
+            "rule": "Optimize diagnostic commands for speed",
+            "skipExpensiveOperations": "Skip image downloads, post creation, template processing",
+            "focusOnData": "Focus on API response structure, agent IDs, timestamps, categorization logic",
+            "quickFeedback": "Provide immediate feedback for troubleshooting sync issues"
+        }
+    },
+    "syncModeManagementPatterns": {
+        "description": "Patterns for managing different synchronization modes",
+        "incrementalVsAgeBased": {
+            "rule": "Provide clear control over sync modes with transparency",
+            "incrementalSync": "Use ModificationTimestamp for efficiency but may miss deleted/re-imported posts",
+            "ageBasedSync": "Use listing_age_days for comprehensive coverage including re-imports",
+            "userControl": "Provide CLI commands to check status and reset modes"
+        },
+        "syncStatusTransparency": {
+            "rule": "Make sync mode visible and understandable to users",
+            "statusCommand": "wp shift8-treb sync_status shows current mode and implications",
+            "resetCommand": "wp shift8-treb reset_sync provides easy mode switching",
+            "documentation": "Clearly explain when to use each mode and trade-offs"
+        },
+        "uxConsiderations": {
+            "rule": "Avoid invisible behaviors that confuse users",
+            "problem": "Incremental sync timestamp is invisible and causes unexpected behavior",
+            "solution": "Provide visibility and control over sync behavior",
+            "prevention": "Always document automatic behaviors that affect user expectations"
+        }
+    },
+    "uiUxBestPractices": {
+        "description": "User interface and experience improvements learned",
+        "eliminateAnnoyingBehaviors": {
+            "rule": "Fix annoying UI behaviors that frustrate users",
+            "multipleConfirmations": "Never show multiple confirmation dialogs for single actions",
+            "debugging": "Check for duplicate event handlers in JavaScript",
+            "solution": "Consolidate confirmation logic and remove duplicate handlers"
+        },
+        "feedbackClarity": {
+            "rule": "Provide clear, immediate feedback for user actions",
+            "successMessages": "Always show success confirmation for completed actions",
+            "errorMessages": "Provide specific, actionable error messages",
+            "progressIndicators": "Show progress for long-running operations"
+        }
+    },
+    "wordpressPluginDirectoryReadiness": {
+        "description": "Patterns for WordPress.org plugin directory submission",
+        "dualReadmeStrategy": {
+            "rule": "Maintain both README.md and readme.txt with synchronized content",
+            "readmeMd": "GitHub/development focused with technical details and CLI commands",
+            "readmeTxt": "WordPress.org focused with user-friendly descriptions and FAQ",
+            "synchronization": "Keep feature lists, changelogs, and core information synchronized"
+        },
+        "changelogMaintenance": {
+            "rule": "Maintain detailed changelogs for both technical and user audiences",
+            "technicalChangelog": "Include implementation details, bug fixes, performance improvements",
+            "userChangelog": "Focus on user-visible features, benefits, and upgrade notices",
+            "versionConsistency": "Ensure version numbers match across all files and headers"
+        }
+    }
+}

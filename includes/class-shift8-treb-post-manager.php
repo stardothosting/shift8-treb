@@ -237,7 +237,7 @@ class Shift8_TREB_Post_Manager {
         // Prepare post data
         $post_title = sanitize_text_field($listing['UnparsedAddress']);
         $post_content = $this->generate_post_content($listing);
-        $post_excerpt = wp_trim_words(strip_tags($listing['PublicRemarks'] ?? ''), 20);
+        $post_excerpt = wp_trim_words(wp_strip_all_tags($listing['PublicRemarks'] ?? ''), 20);
         $category_id = $this->get_listing_category_id($listing);
 
         $post_data = array(

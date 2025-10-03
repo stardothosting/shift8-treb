@@ -484,8 +484,8 @@ class Shift8_TREB_Admin {
         $last_sync = get_option('shift8_treb_last_sync', 0);
         
         return array(
-            'next_sync' => $next_sync ? date('Y-m-d H:i:s', $next_sync) : esc_html__('Not scheduled', 'shift8-treb'),
-            'last_sync' => $last_sync ? date('Y-m-d H:i:s', $last_sync) : esc_html__('Never', 'shift8-treb'),
+            'next_sync' => $next_sync ? gmdate('Y-m-d H:i:s', $next_sync) : esc_html__('Not scheduled', 'shift8-treb'),
+            'last_sync' => $last_sync ? gmdate('Y-m-d H:i:s', $last_sync) : esc_html__('Never', 'shift8-treb'),
             'is_scheduled' => (bool) $next_sync
         );
     }

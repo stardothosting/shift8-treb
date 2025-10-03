@@ -393,7 +393,9 @@ $sync_status = array(
                                 <?php else: ?>
                                     <span style="color: #46b450;">📅 <?php esc_html_e('Age-Based', 'shift8-treb'); ?></span>
                                     <small style="display: block; color: #666; margin-top: 2px;">
-                                        <?php printf(esc_html__('Fetches all listings from last %d days', 'shift8-treb'), intval($settings['listing_age_days'] ?? 90)); ?>
+                                        <?php 
+                                        /* translators: %d is the number of days for listing age filter */
+                                        printf(esc_html__('Fetches all listings from last %d days', 'shift8-treb'), intval($settings['listing_age_days'] ?? 90)); ?>
                                     </small>
                                 <?php endif; ?>
                             </td>

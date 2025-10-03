@@ -208,8 +208,8 @@ class Shift8_TREB {
     public function init() {
         shift8_treb_log('Plugin init() called');
         
-        // Load text domain for translations
-        load_plugin_textdomain('shift8-treb', false, dirname(plugin_basename(__FILE__)) . '/languages');
+        // WordPress automatically loads translations for plugins hosted on WordPress.org since WP 4.6
+        // load_plugin_textdomain() is no longer needed
         
         // Initialize admin functionality
         if (is_admin()) {
@@ -757,8 +757,16 @@ function shift8_treb_write_log_file($log_entry) {
     
     // Rotate log if it gets too large (5MB)
     if (file_exists($log_file) && filesize($log_file) > 5 * 1024 * 1024) {
-        $backup_file = $log_dir . '/treb-sync-' . date('Y-m-d-H-i-s') . '.log';
-        rename($log_file, $backup_file);
+        $backup_file = $log_dir . '/treb-sync-' . gmdate('Y-m-d-H-i-s') . '.log';
+        
+        // Use WP_Filesystem for file operations
+        global $wp_filesystem;
+        if (empty($wp_filesystem)) {
+            require_once(ABSPATH . '/wp-admin/includes/file.php');
+            WP_Filesystem();
+        }
+        
+        $wp_filesystem->move($log_file, $backup_file);
         
         // Keep only last 5 backup files
         $backup_files = glob($log_dir . '/treb-sync-*.log');
@@ -768,7 +776,7 @@ function shift8_treb_write_log_file($log_entry) {
             });
             
             for ($i = 0; $i < count($backup_files) - 5; $i++) {
-                unlink($backup_files[$i]);
+                wp_delete_file($backup_files[$i]);
             }
         }
     }
@@ -823,7 +831,7 @@ function shift8_treb_clear_logs() {
     
     $log_files = glob($log_dir . '/*.log');
     foreach ($log_files as $file) {
-        unlink($file);
+        wp_delete_file($file);
     }
     
     shift8_treb_log('Log files cleared by user', array(), 'info');

@@ -198,7 +198,7 @@ class Shift8_TREB_AMPRE_Service {
             // If no last sync timestamp, use listing age days filter
             if (!empty($this->settings['listing_age_days'])) {
                 $days_ago = intval($this->settings['listing_age_days']);
-                $cutoff_date = date('Y-m-d\TH:i:s\Z', strtotime("-{$days_ago} days"));
+                $cutoff_date = gmdate('Y-m-d\TH:i:s\Z', strtotime("-{$days_ago} days"));
                 $filters[] = "ModificationTimestamp ge " . $cutoff_date;
             }
         }
