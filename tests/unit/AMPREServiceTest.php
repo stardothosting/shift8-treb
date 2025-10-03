@@ -546,4 +546,6 @@ class AMPREServiceTest extends TestCase {
         $this->assertInstanceOf('WP_Error', $result);
         $this->assertEquals('ampre_media_error', $result->get_error_code());
     }
+
+
 }

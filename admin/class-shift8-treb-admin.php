@@ -40,6 +40,7 @@ class Shift8_TREB_Admin {
         add_action('wp_ajax_shift8_treb_manual_sync', array($this, 'ajax_manual_sync'));
         add_action('wp_ajax_shift8_treb_get_logs', array($this, 'ajax_get_logs'));
         add_action('wp_ajax_shift8_treb_clear_log', array($this, 'ajax_clear_log'));
+        add_action('wp_ajax_shift8_treb_reset_sync', array($this, 'ajax_reset_sync'));
     }
 
     /**
@@ -245,7 +246,7 @@ class Shift8_TREB_Admin {
             $sanitized['max_price'] = $input['max_price'] !== '' ? absint($input['max_price']) : '';
         }
         
-        shift8_treb_debug_log('Settings saved', array(
+        shift8_treb_log('Settings saved', array(
             'bearer_token_set' => !empty($sanitized['bearer_token']),
             'sync_frequency' => $sanitized['sync_frequency'],
             'debug_enabled' => $sanitized['debug_enabled'],
@@ -263,51 +264,6 @@ class Shift8_TREB_Admin {
         return $sanitized;
     }
 
-    /**
-     * Save settings (legacy method)
-     *
-     * Handles direct POST submission with nonce verification.
-     * This is kept for backward compatibility.
-     *
-     * @since 1.0.0
-     */
-    private function save_settings() {
-        // Verify nonce
-        if (!isset($_POST['shift8_treb_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['shift8_treb_nonce'])), 'shift8_treb_settings')) {
-            wp_die(esc_html__('Security check failed. Please try again.', 'shift8-treb'));
-        }
-        
-        // Prepare settings array
-        $settings = array(
-            'ampre_api_token' => '',
-            'sync_frequency' => isset($_POST['sync_frequency']) ? sanitize_text_field(wp_unslash($_POST['sync_frequency'])) : 'daily',
-            'debug_enabled' => isset($_POST['debug_enabled']) ? '1' : '0',
-            'google_maps_api_key' => isset($_POST['google_maps_api_key']) ? sanitize_text_field(wp_unslash($_POST['google_maps_api_key'])) : '',
-            'listing_status_filter' => isset($_POST['listing_status_filter']) ? sanitize_text_field(wp_unslash($_POST['listing_status_filter'])) : 'Active',
-            'city_filter' => isset($_POST['city_filter']) ? sanitize_text_field(wp_unslash($_POST['city_filter'])) : 'Toronto',
-            'max_listings_per_sync' => isset($_POST['max_listings_per_sync']) ? absint($_POST['max_listings_per_sync']) : 100
-        );
-        
-        // Handle API token encryption
-        if (!empty($_POST['ampre_api_token'])) {
-            $settings['ampre_api_token'] = shift8_treb_encrypt_data(trim(sanitize_text_field(wp_unslash($_POST['ampre_api_token']))));
-        } else {
-            // Keep existing token if new one is empty
-            $existing_settings = get_option('shift8_treb_settings', array());
-            $settings['ampre_api_token'] = isset($existing_settings['ampre_api_token']) ? $existing_settings['ampre_api_token'] : '';
-        }
-        
-        // Update settings
-        update_option('shift8_treb_settings', $settings);
-        
-        // Show success message
-        add_settings_error(
-            'shift8_treb_settings',
-            'settings_updated',
-            esc_html__('Settings saved successfully!', 'shift8-treb'),
-            'updated'
-        );
-    }
 
     /**
      * Enqueue admin scripts and styles
@@ -402,7 +358,7 @@ class Shift8_TREB_Admin {
             }
             
         } catch (Exception $e) {
-            shift8_treb_debug_log('API connection test failed', array(
+            shift8_treb_log('API connection test failed', array(
                 'error' => $e->getMessage()
             ));
             
@@ -516,52 +472,6 @@ class Shift8_TREB_Admin {
         }
     }
 
-    /**
-     * Get last N lines from a file
-     *
-     * Efficiently reads the last N lines from a file without loading
-     * the entire file into memory.
-     *
-     * @since 1.0.0
-     * @param string $file_path Path to the file
-     * @param int    $lines     Number of lines to retrieve
-     * @return array Array of lines
-     */
-    private function get_last_lines($file_path, $lines = 100) {
-        if (!file_exists($file_path) || !is_readable($file_path)) {
-            return array();
-        }
-        
-        $file = file($file_path);
-        if ($file === false) {
-            return array();
-        }
-        
-        // Get last N lines
-        $total_lines = count($file);
-        $start = max(0, $total_lines - $lines);
-        $result = array_slice($file, $start);
-        
-        // Remove trailing newlines and sanitize
-        return array_map(function($line) {
-            return esc_html(rtrim($line, "\r\n"));
-        }, $result);
-    }
-
-    /**
-     * Format file size in human readable format
-     *
-     * @since 1.0.0
-     * @param int $size File size in bytes
-     * @return string Formatted file size
-     */
-    private function format_file_size($size) {
-        $units = array('B', 'KB', 'MB', 'GB');
-        $power = $size > 0 ? floor(log($size, 1024)) : 0;
-        $power = min($power, count($units) - 1);
-        
-        return round($size / pow(1024, $power), 2) . ' ' . $units[$power];
-    }
 
     /**
      * Get sync status information
@@ -578,5 +488,48 @@ class Shift8_TREB_Admin {
             'last_sync' => $last_sync ? date('Y-m-d H:i:s', $last_sync) : esc_html__('Never', 'shift8-treb'),
             'is_scheduled' => (bool) $next_sync
         );
+    }
+
+    /**
+     * AJAX handler for resetting sync mode
+     *
+     * @since 1.2.0
+     */
+    public function ajax_reset_sync() {
+        // Verify nonce and capabilities
+        if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'shift8_treb_nonce') || !current_user_can('manage_options')) {
+            wp_send_json_error(array(
+                'message' => esc_html__('Security check failed.', 'shift8-treb')
+            ));
+        }
+
+        try {
+            $last_sync = get_option('shift8_treb_last_sync', '');
+            
+            if (empty($last_sync)) {
+                wp_send_json_success(array(
+                    'message' => esc_html__('Incremental sync is already disabled.', 'shift8-treb')
+                ));
+                return;
+            }
+
+            // Delete the incremental sync timestamp
+            delete_option('shift8_treb_last_sync');
+            
+            // Log the reset action
+            shift8_treb_log('Incremental sync reset by user', array(
+                'previous_timestamp' => esc_html($last_sync),
+                'user_id' => get_current_user_id()
+            ), 'info');
+
+            wp_send_json_success(array(
+                'message' => esc_html__('Sync mode reset successfully. Next sync will use age-based filtering.', 'shift8-treb')
+            ));
+
+        } catch (Exception $e) {
+            wp_send_json_error(array(
+                'message' => esc_html__('Error resetting sync mode: ', 'shift8-treb') . esc_html($e->getMessage())
+            ));
+        }
     }
 }

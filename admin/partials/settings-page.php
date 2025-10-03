@@ -289,6 +289,7 @@ $sync_status = array(
                                                 <li><code>%VIRTUAL_TOUR_SECTION%</code> - <?php esc_html_e('Formatted virtual tour section', 'shift8-treb'); ?></li>
                                                 <li><code>%PHONEMSG%</code> - <?php esc_html_e('Contact phone message', 'shift8-treb'); ?></li>
                                                 <li><code>%WALKSCORECODE%</code> - <?php esc_html_e('WalkScore integration code', 'shift8-treb'); ?></li>
+                                                <li><code>%GOOGLEMAPCODE%</code> - <?php esc_html_e('Google Maps widget (requires API key)', 'shift8-treb'); ?></li>
                                                 <li><code>%WPBLOG%</code> - <?php esc_html_e('WordPress site URL', 'shift8-treb'); ?></li>
                                                 <li><code>%MAPLAT%</code> - <?php esc_html_e('Property latitude', 'shift8-treb'); ?></li>
                                                 <li><code>%MAPLNG%</code> - <?php esc_html_e('Property longitude', 'shift8-treb'); ?></li>
@@ -358,6 +359,11 @@ $sync_status = array(
             <!-- Sync Status -->
             <div class="card">
                 <h3><?php esc_html_e('Sync Status', 'shift8-treb'); ?></h3>
+                <?php
+                // Check incremental sync status
+                $last_sync_timestamp = get_option('shift8_treb_last_sync', '');
+                $is_incremental = !empty($last_sync_timestamp);
+                ?>
                 <table class="widefat">
                     <tbody>
                         <tr>
@@ -376,6 +382,22 @@ $sync_status = array(
                                 </span>
                             </td>
                         </tr>
+                        <tr>
+                            <td><strong><?php esc_html_e('Sync Mode:', 'shift8-treb'); ?></strong></td>
+                            <td>
+                                <?php if ($is_incremental): ?>
+                                    <span style="color: #0073aa;">📊 <?php esc_html_e('Incremental', 'shift8-treb'); ?></span>
+                                    <small style="display: block; color: #666; margin-top: 2px;">
+                                        <?php esc_html_e('Only fetches listings modified since last sync (efficient)', 'shift8-treb'); ?>
+                                    </small>
+                                <?php else: ?>
+                                    <span style="color: #46b450;">📅 <?php esc_html_e('Age-Based', 'shift8-treb'); ?></span>
+                                    <small style="display: block; color: #666; margin-top: 2px;">
+                                        <?php printf(esc_html__('Fetches all listings from last %d days', 'shift8-treb'), intval($settings['listing_age_days'] ?? 90)); ?>
+                                    </small>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
                 
@@ -383,6 +405,17 @@ $sync_status = array(
                     <button type="button" id="manual-sync" class="button button-primary">
                         <?php esc_html_e('Run Manual Sync', 'shift8-treb'); ?>
                     </button>
+                    
+                    <?php if ($is_incremental): ?>
+                        <button type="button" id="reset-sync" class="button button-secondary" 
+                                title="<?php esc_attr_e('Reset incremental sync to force re-import of deleted posts. Next sync will use age-based filtering instead of incremental sync.', 'shift8-treb'); ?>">
+                            <?php esc_html_e('Reset Sync Mode', 'shift8-treb'); ?>
+                        </button>
+                        <div style="margin-top: 8px; padding: 8px; background: #fff3cd; border-left: 4px solid #ffc107; font-size: 12px;">
+                            <strong>⚠️ <?php esc_html_e('Note:', 'shift8-treb'); ?></strong> 
+                            <?php esc_html_e('Incremental mode will not re-import deleted posts. Use "Reset Sync Mode" if you have deleted posts and want to re-import them.', 'shift8-treb'); ?>
+                        </div>
+                    <?php endif; ?>
                 </p>
             </div>
 
@@ -390,11 +423,16 @@ $sync_status = array(
             <div class="card">
                 <h3><?php esc_html_e('Quick Stats', 'shift8-treb'); ?></h3>
                 <?php
-                // Count posts in 'Listings' category
+                // Count posts in both 'Listings' and 'OtherListings' categories
                 $listings_category = get_category_by_slug('listings');
+                $other_listings_category = get_category_by_slug('otherlistings');
+                
                 $listing_count = 0;
                 if ($listings_category) {
-                    $listing_count = $listings_category->count;
+                    $listing_count += $listings_category->count;
+                }
+                if ($other_listings_category) {
+                    $listing_count += $other_listings_category->count;
                 }
                 ?>
                 <table class="widefat">
@@ -411,7 +449,25 @@ $sync_status = array(
                 </table>
                 
                 <p>
-                    <a href="<?php echo esc_url(admin_url('edit.php?category_name=listings')); ?>" class="button button-secondary">
+                    <?php
+                    // Build URL to show both Listings and OtherListings categories
+                    $listings_cat = get_category_by_slug('listings');
+                    $other_listings_cat = get_category_by_slug('otherlistings');
+                    
+                    $category_ids = array();
+                    if ($listings_cat) {
+                        $category_ids[] = $listings_cat->term_id;
+                    }
+                    if ($other_listings_cat) {
+                        $category_ids[] = $other_listings_cat->term_id;
+                    }
+                    
+                    $view_url = admin_url('edit.php');
+                    if (!empty($category_ids)) {
+                        $view_url = add_query_arg('cat', implode(',', $category_ids), $view_url);
+                    }
+                    ?>
+                    <a href="<?php echo esc_url($view_url); ?>" class="button button-secondary">
                         <?php esc_html_e('View All Listings', 'shift8-treb'); ?>
                     </a>
                 </p>
@@ -591,7 +647,7 @@ jQuery(document).ready(function($) {
             type: 'POST',
             data: {
                 action: 'shift8_treb_test_api_connection',
-                nonce: '<?php echo wp_create_nonce('shift8_treb_nonce'); ?>',
+                nonce: '<?php echo esc_js(wp_create_nonce('shift8_treb_nonce')); ?>',
                 bearer_token: token
             },
             success: function(response) {
@@ -610,6 +666,40 @@ jQuery(document).ready(function($) {
         });
     });
     
+    // Reset Sync Mode
+    $('#reset-sync').on('click', function() {
+        var button = $(this);
+        
+        if (!confirm('<?php esc_html_e('Reset incremental sync mode? This will force the next sync to use age-based filtering and may re-import deleted posts.', 'shift8-treb'); ?>')) {
+            return;
+        }
+        
+        button.prop('disabled', true).text('<?php esc_html_e('Resetting...', 'shift8-treb'); ?>');
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'shift8_treb_reset_sync',
+                nonce: '<?php echo esc_js(wp_create_nonce('shift8_treb_nonce')); ?>'
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert('<?php esc_html_e('Sync mode reset successfully! Page will reload.', 'shift8-treb'); ?>');
+                    location.reload();
+                } else {
+                    alert('<?php esc_html_e('Failed to reset sync mode: ', 'shift8-treb'); ?>' + response.data.message);
+                }
+            },
+            error: function() {
+                alert('<?php esc_html_e('Failed to reset sync mode.', 'shift8-treb'); ?>');
+            },
+            complete: function() {
+                button.prop('disabled', false).text('<?php esc_html_e('Reset Sync Mode', 'shift8-treb'); ?>');
+            }
+        });
+    });
+
     // Manual Sync
     $('#manual-sync').on('click', function() {
         var button = $(this);
@@ -620,7 +710,7 @@ jQuery(document).ready(function($) {
             type: 'POST',
             data: {
                 action: 'shift8_treb_manual_sync',
-                nonce: '<?php echo wp_create_nonce('shift8_treb_nonce'); ?>'
+                nonce: '<?php echo esc_js(wp_create_nonce('shift8_treb_nonce')); ?>'
             },
             success: function(response) {
                 if (response.success) {
@@ -658,7 +748,7 @@ jQuery(document).ready(function($) {
             type: 'POST',
             data: {
                 action: 'shift8_treb_get_logs',
-                nonce: '<?php echo wp_create_nonce('shift8_treb_nonce'); ?>'
+                nonce: '<?php echo esc_js(wp_create_nonce('shift8_treb_nonce')); ?>'
             },
             success: function(response) {
                 if (response.success) {
@@ -678,39 +768,6 @@ jQuery(document).ready(function($) {
         });
     });
     
-    // Clear Logs
-    $('#clear-logs').on('click', function() {
-        if (!confirm('<?php esc_html_e('Are you sure you want to clear all logs?', 'shift8-treb'); ?>')) {
-            return;
-        }
-        
-        var button = $(this);
-        button.prop('disabled', true).text('<?php esc_html_e('Clearing...', 'shift8-treb'); ?>');
-        
-        $.ajax({
-            url: ajaxurl,
-            type: 'POST',
-            data: {
-                action: 'shift8_treb_clear_log',
-                nonce: '<?php echo wp_create_nonce('shift8_treb_nonce'); ?>'
-            },
-            success: function(response) {
-                if (response.success) {
-                    $('#log-content').val('');
-                    $('#log-viewer').hide();
-                    $('#view-logs').text('<?php esc_html_e('View Recent Logs', 'shift8-treb'); ?>');
-                    alert(response.data.message);
-                } else {
-                    alert('<?php esc_html_e('Failed to clear logs: ', 'shift8-treb'); ?>' + response.data.message);
-                }
-            },
-            error: function() {
-                alert('<?php esc_html_e('Failed to clear logs.', 'shift8-treb'); ?>');
-            },
-            complete: function() {
-                button.prop('disabled', false).text('<?php esc_html_e('Clear Logs', 'shift8-treb'); ?>');
-            }
-        });
-    });
+    // Clear Logs handler is in admin.js - no duplicate handler needed here
 });
 </script>

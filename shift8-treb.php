@@ -193,6 +193,9 @@ class Shift8_TREB {
         if (defined('WP_CLI') && WP_CLI) {
             require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-cli.php';
         }
+        
+        // Hook for Google Maps script enqueue
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_google_maps_scripts'));
     }
     
     /**
@@ -203,7 +206,7 @@ class Shift8_TREB {
      * @since 1.0.0
      */
     public function init() {
-        shift8_treb_debug_log('Plugin init() called');
+        shift8_treb_log('Plugin init() called');
         
         // Load text domain for translations
         load_plugin_textdomain('shift8-treb', false, dirname(plugin_basename(__FILE__)) . '/languages');
@@ -385,7 +388,7 @@ class Shift8_TREB {
         // Only register the schedule that's currently being used
         if (isset($custom_schedules[$sync_frequency])) {
             $schedules[$sync_frequency] = $custom_schedules[$sync_frequency];
-            shift8_treb_debug_log('Registered cron schedule', array(
+            shift8_treb_log('Registered cron schedule', array(
                 'schedule' => $sync_frequency,
                 'interval' => $custom_schedules[$sync_frequency]['interval']
             ));
@@ -408,7 +411,7 @@ class Shift8_TREB {
         // Schedule the sync event
         wp_schedule_event(time(), $sync_frequency, 'shift8_treb_sync_listings');
         
-        shift8_treb_debug_log('TREB sync scheduled', array(
+        shift8_treb_log('TREB sync scheduled', array(
             'frequency' => $sync_frequency,
             'next_run' => wp_next_scheduled('shift8_treb_sync_listings')
         ));
@@ -437,7 +440,7 @@ class Shift8_TREB {
             if (!$next_scheduled) {
                 // No cron scheduled, create one
                 $this->schedule_sync();
-                shift8_treb_debug_log('TREB cron scheduled', array(
+                shift8_treb_log('TREB cron scheduled', array(
                     'frequency' => $sync_frequency,
                     'next_run' => wp_next_scheduled('shift8_treb_sync_listings')
                 ));
@@ -448,7 +451,7 @@ class Shift8_TREB {
                     // Frequency changed, reschedule
                     wp_clear_scheduled_hook('shift8_treb_sync_listings');
                     $this->schedule_sync();
-                    shift8_treb_debug_log('TREB cron rescheduled', array(
+                    shift8_treb_log('TREB cron rescheduled', array(
                         'old_frequency' => $current_cron->schedule,
                         'new_frequency' => $sync_frequency,
                         'next_run' => wp_next_scheduled('shift8_treb_sync_listings')
@@ -459,7 +462,7 @@ class Shift8_TREB {
             // Sync disabled, clear any existing cron
             if (wp_next_scheduled('shift8_treb_sync_listings')) {
                 wp_clear_scheduled_hook('shift8_treb_sync_listings');
-                shift8_treb_debug_log('TREB cron cleared - sync disabled (no bearer token)');
+                shift8_treb_log('TREB cron cleared - sync disabled (no bearer token)');
             }
         }
     }
@@ -472,7 +475,7 @@ class Shift8_TREB {
      * @since 1.0.0
      */
     public function sync_listings_cron() {
-        shift8_treb_debug_log('=== TREB CRON SYNC STARTED ===');
+        shift8_treb_log('=== TREB CRON SYNC STARTED ===');
         
         try {
             // Include and initialize sync service
@@ -486,10 +489,10 @@ class Shift8_TREB {
             ));
 
             if (!$results['success']) {
-                throw new Exception($results['message']);
+                throw new Exception(esc_html($results['message']));
             }
 
-            shift8_treb_debug_log('=== TREB CRON SYNC COMPLETED ===', array(
+            shift8_treb_log('=== TREB CRON SYNC COMPLETED ===', array(
                 'total_listings' => $results['total_listings'],
                 'processed' => $results['processed'],
                 'created' => $results['created'],
@@ -499,7 +502,7 @@ class Shift8_TREB {
             ));
             
         } catch (Exception $e) {
-            shift8_treb_debug_log('TREB cron sync failed', array(
+            shift8_treb_log('TREB cron sync failed', array(
                 'error' => esc_html($e->getMessage())
             ), 'error');
         }
@@ -540,7 +543,7 @@ class Shift8_TREB {
         // Schedule the sync cron job
         $this->schedule_sync();
         
-        shift8_treb_debug_log('Plugin activated');
+        shift8_treb_log('Plugin activated');
     }
     
     /**
@@ -557,21 +560,141 @@ class Shift8_TREB {
         // Flush rewrite rules
         flush_rewrite_rules();
         
-        shift8_treb_debug_log('Plugin deactivated');
+        shift8_treb_log('Plugin deactivated');
+    }
+    
+    /**
+     * Enqueue Google Maps scripts for TREB listings
+     *
+     * @since 1.2.0
+     */
+    public function enqueue_google_maps_scripts() {
+        // Only enqueue on single posts that are TREB listings
+        if (!is_single() || !shift8_treb_is_listing_post()) {
+            return;
+        }
+        
+        // Only enqueue if we have Google Maps API key
+        if (!shift8_treb_has_google_maps_api_key()) {
+            return;
+        }
+        
+        // Get current post data to check if it has coordinates
+        $post_id = get_the_ID();
+        $mls_number = get_post_meta($post_id, 'listing_mls_number', true);
+        
+        if (empty($mls_number)) {
+            return;
+        }
+        
+        // Get settings for API key
+        $settings = get_option('shift8_treb_settings', array());
+        $api_key = $settings['google_maps_api_key'];
+        
+        // Get listing coordinates from post content or meta
+        $coordinates = $this->get_post_coordinates($post_id);
+        
+        if (!$coordinates) {
+            return;
+        }
+        
+        // Parse address for marker title
+        $post_title = get_the_title($post_id);
+        $address_parts = $this->parse_post_address($post_title);
+        
+        // Enqueue Google Maps API
+        wp_enqueue_script(
+            'shift8-treb-google-maps-api',
+            'https://maps.googleapis.com/maps/api/js?key=' . esc_attr($api_key) . '&callback=shift8_treb_init_map',
+            array(),
+            SHIFT8_TREB_VERSION,
+            true
+        );
+        
+        // Add inline script with map initialization
+        $map_script = sprintf("
+function shift8_treb_init_map() {
+    var mapElement = document.getElementById('shift8-treb-map');
+    if (!mapElement) {
+        return; // Map element not found on this page
+    }
+    
+    var theLatLng = {lat: %s, lng: %s};
+    var map = new google.maps.Map(mapElement, {
+        center: theLatLng,
+        zoom: 15
+    });
+    var marker = new google.maps.Marker({
+        position: theLatLng,
+        map: map,
+        title: '%s'
+    });
+}",
+            floatval($coordinates['lat']),
+            floatval($coordinates['lng']),
+            esc_js($address_parts['street_number'] . ' ' . $address_parts['street_name'])
+        );
+        
+        wp_add_inline_script('shift8-treb-google-maps-api', $map_script, 'before');
+    }
+    
+    /**
+     * Get coordinates for a post
+     *
+     * @since 1.2.0
+     * @param int $post_id Post ID
+     * @return array|false Coordinates array or false
+     */
+    private function get_post_coordinates($post_id) {
+        // Try to extract coordinates from post content
+        $post_content = get_post_field('post_content', $post_id);
+        
+        // Look for latitude and longitude in the content (from template placeholders)
+        if (preg_match('/lat:\s*([0-9.-]+)/', $post_content, $lat_matches) &&
+            preg_match('/lng:\s*([0-9.-]+)/', $post_content, $lng_matches)) {
+            return array(
+                'lat' => $lat_matches[1],
+                'lng' => $lng_matches[1]
+            );
+        }
+        
+        // Fallback to Toronto coordinates if not found
+        return array(
+            'lat' => '43.6532',
+            'lng' => '-79.3832'
+        );
+    }
+    
+    /**
+     * Parse address from post title
+     *
+     * @since 1.2.0
+     * @param string $title Post title (address)
+     * @return array Address components
+     */
+    private function parse_post_address($title) {
+        $parts = array(
+            'street_number' => '',
+            'street_name' => ''
+        );
+        
+        if (empty($title)) {
+            return $parts;
+        }
+        
+        // Extract street number (first number in the title)
+        if (preg_match('/^(\d+)/', trim($title), $matches)) {
+            $parts['street_number'] = $matches[1];
+            $title = preg_replace('/^\d+\s*/', '', $title);
+        }
+        
+        // Remaining is street name (clean up extra info)
+        $parts['street_name'] = trim(preg_replace('/,.*$/', '', $title));
+        
+        return $parts;
     }
 }
 
-/**
- * Debug logging function
- *
- * @since 1.0.0
- * @param string $message Log message
- * @param array $context Additional context data
- * @param string $level Log level (info, warning, error)
- */
-function shift8_treb_debug_log($message, $context = array(), $level = 'info') {
-    shift8_treb_log($message, $context, $level);
-}
 
 /**
  * Main logging function
@@ -707,6 +830,60 @@ function shift8_treb_clear_logs() {
     return true;
 }
 
+/**
+ * Check if Google Maps API key is configured
+ *
+ * @since 1.2.0
+ * @return bool True if API key is configured
+ */
+function shift8_treb_has_google_maps_api_key() {
+    $settings = get_option('shift8_treb_settings', array());
+    return !empty($settings['google_maps_api_key']);
+}
+
+/**
+ * Check if listing has valid coordinates
+ *
+ * @since 1.2.0
+ * @param array $listing Listing data
+ * @return bool True if listing has coordinates or can be geocoded
+ */
+function shift8_treb_has_listing_coordinates($listing) {
+    // Check if AMPRE API provided coordinates
+    if (isset($listing['Latitude']) && isset($listing['Longitude']) && 
+        !empty($listing['Latitude']) && !empty($listing['Longitude'])) {
+        return true;
+    }
+    
+    // Check if we have an address for geocoding and Google Maps API key
+    if (!empty($listing['UnparsedAddress']) && shift8_treb_has_google_maps_api_key()) {
+        return true;
+    }
+    
+    return false;
+}
+
+/**
+ * Check if current post is a TREB listing
+ *
+ * @since 1.2.0
+ * @param int $post_id Optional post ID, defaults to current post
+ * @return bool True if post is a TREB listing
+ */
+function shift8_treb_is_listing_post($post_id = null) {
+    if (!$post_id) {
+        $post_id = get_the_ID();
+    }
+    
+    if (!$post_id) {
+        return false;
+    }
+    
+    // Check if post has MLS number meta (indicates it's a TREB listing)
+    $mls_number = get_post_meta($post_id, 'listing_mls_number', true);
+    return !empty($mls_number);
+}
+
 // Initialize plugin
-shift8_treb_debug_log('Plugin file loaded, initializing...');
+shift8_treb_log('Plugin file loaded, initializing...');
 Shift8_TREB::get_instance();

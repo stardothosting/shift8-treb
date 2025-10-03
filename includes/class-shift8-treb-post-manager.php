@@ -53,7 +53,7 @@ class Shift8_TREB_Post_Manager {
             // Check if agent should be excluded (skip entirely)
             $agent_id = isset($listing['ListAgentKey']) ? sanitize_text_field($listing['ListAgentKey']) : '';
             if ($this->is_excluded_agent($agent_id)) {
-                shift8_treb_debug_log('Skipping excluded agent', array(
+                shift8_treb_log('Skipping excluded agent', array(
                     'agent_id' => esc_html($agent_id),
                     'listing_key' => esc_html($listing['ListingKey'] ?? 'unknown')
                 ));
@@ -69,7 +69,7 @@ class Shift8_TREB_Post_Manager {
 
             $mls_number = sanitize_text_field($listing['ListingKey']);
 
-            shift8_treb_debug_log('Processing listing', array(
+            shift8_treb_log('Processing listing', array(
                 'mls_number' => esc_html($mls_number)
             ));
 
@@ -77,7 +77,7 @@ class Shift8_TREB_Post_Manager {
             $existing_post_id = $this->get_existing_listing_id($mls_number);
             if ($existing_post_id) {
                 // Update existing listing instead of skipping
-                shift8_treb_debug_log('Listing already exists, updating', array(
+                shift8_treb_log('Listing already exists, updating', array(
                     'mls_number' => esc_html($mls_number),
                     'existing_post_id' => $existing_post_id
                 ));
@@ -90,7 +90,7 @@ class Shift8_TREB_Post_Manager {
                 // Update MLS number meta
                 update_post_meta($post_id, 'listing_mls_number', sanitize_text_field($listing['ListingKey']));
                 
-                shift8_treb_debug_log('Listing updated successfully', array(
+                shift8_treb_log('Listing updated successfully', array(
                     'post_id' => $post_id,
                     'mls_number' => esc_html($mls_number)
                 ));
@@ -104,10 +104,6 @@ class Shift8_TREB_Post_Manager {
                 );
             }
 
-            // Apply business rules (check for excluded agents)
-            if ($this->is_excluded_agent($listing)) {
-                return false;
-            }
 
             // Create the WordPress post
             $post_id = $this->create_listing_post($listing);
@@ -125,7 +121,7 @@ class Shift8_TREB_Post_Manager {
             // Update post content with actual image HTML after processing
             $this->update_post_content_with_images($post_id);
 
-            shift8_treb_debug_log('Listing processed successfully', array(
+            shift8_treb_log('Listing processed successfully', array(
                 'post_id' => $post_id,
                 'mls_number' => esc_html($mls_number),
                 'image_stats' => $image_stats
@@ -141,7 +137,7 @@ class Shift8_TREB_Post_Manager {
             );
 
         } catch (Exception $e) {
-            shift8_treb_debug_log('Error processing listing', array(
+            shift8_treb_log('Error processing listing', array(
                 'error' => esc_html($e->getMessage()),
                 'mls_number' => isset($listing['ListingKey']) ? esc_html($listing['ListingKey']) : 'unknown'
             ));
@@ -161,7 +157,7 @@ class Shift8_TREB_Post_Manager {
         
         foreach ($required_fields as $field) {
             if (!isset($listing[$field]) || empty($listing[$field])) {
-                shift8_treb_debug_log('Invalid listing - missing required field', array(
+                shift8_treb_log('Invalid listing - missing required field', array(
                     'missing_field' => esc_html($field)
                 ));
                 return false;
@@ -171,16 +167,6 @@ class Shift8_TREB_Post_Manager {
         return true;
     }
 
-    /**
-     * Check if listing already exists (using MLS number as unique identifier)
-     *
-     * @since 1.0.0
-     * @param string $mls_number MLS number
-     * @return bool True if exists
-     */
-    private function listing_exists($mls_number) {
-        return $this->get_existing_listing_id($mls_number) !== false;
-    }
 
     /**
      * Get existing listing post ID by MLS number
@@ -203,55 +189,6 @@ class Shift8_TREB_Post_Manager {
         return !empty($existing_posts) ? $existing_posts[0] : false;
     }
 
-    /**
-     * Apply business rules to determine if listing should be processed
-     *
-     * @since 1.0.0
-     * @param array $listing Listing data
-     * @return bool True if should process
-     */
-    private function should_process_listing($listing) {
-        $agent_id = isset($listing['ListAgentKey']) ? sanitize_text_field($listing['ListAgentKey']) : '';
-        $price = isset($listing['ListPrice']) ? intval($listing['ListPrice']) : 0;
-
-        // Check if this is our agent's listing
-        if ($this->is_our_agent($agent_id)) {
-            return true; // Always process our agent's listings
-        }
-
-        // For other agents, check minimum price
-        $min_price = isset($this->settings['min_price']) ? intval($this->settings['min_price']) : 0;
-        if ($min_price > 0 && $price < $min_price) {
-            shift8_treb_debug_log('Listing below minimum price, skipping', array(
-                'price' => $price,
-                'min_price' => $min_price,
-                'mls_number' => esc_html($listing['ListingKey'])
-            ));
-            return false;
-        }
-
-        // Check maximum price
-        $max_price = isset($this->settings['max_price']) ? intval($this->settings['max_price']) : 0;
-        if ($max_price > 0 && $price > $max_price) {
-            shift8_treb_debug_log('Listing above maximum price, skipping', array(
-                'price' => $price,
-                'max_price' => $max_price,
-                'mls_number' => esc_html($listing['ListingKey'])
-            ));
-            return false;
-        }
-
-        // Check if agent is excluded
-        if ($this->is_excluded_agent($agent_id)) {
-            shift8_treb_debug_log('Agent is excluded, skipping', array(
-                'agent_id' => esc_html($agent_id),
-                'mls_number' => esc_html($listing['ListingKey'])
-            ));
-            return false;
-        }
-
-        return true;
-    }
 
     /**
      * Check if agent is one of our agents
@@ -316,7 +253,7 @@ class Shift8_TREB_Post_Manager {
         $post_id = wp_insert_post($post_data);
 
         if (is_wp_error($post_id)) {
-            shift8_treb_debug_log('Failed to create post', array(
+            shift8_treb_log('Failed to create post', array(
                 'error' => esc_html($post_id->get_error_message())
             ));
             return false;
@@ -445,7 +382,8 @@ class Shift8_TREB_Post_Manager {
             
             // Map coordinates for Google Maps (with geocoding fallback)
             '%MAPLAT%' => $this->get_listing_latitude($listing),
-            '%MAPLNG%' => $this->get_listing_longitude($listing)
+            '%MAPLNG%' => $this->get_listing_longitude($listing),
+            '%GOOGLEMAPCODE%' => $this->get_google_map_html($listing)
         );
 
         // Replace placeholders in template
@@ -533,7 +471,7 @@ class Shift8_TREB_Post_Manager {
         $is_our_agent = $this->is_our_agent($agent_id);
         $category_name = $is_our_agent ? 'Listings' : 'OtherListings';
         
-        shift8_treb_debug_log('Category assignment', array(
+        shift8_treb_log('Category assignment', array(
             'mls_number' => isset($listing['ListingKey']) ? esc_html($listing['ListingKey']) : 'unknown',
             'agent_id' => esc_html($agent_id),
             'member_ids' => esc_html($this->settings['member_id']),
@@ -593,7 +531,7 @@ class Shift8_TREB_Post_Manager {
         $media_items = $ampre_service->get_media_for_listing($mls_number);
         
         if (is_wp_error($media_items) || empty($media_items)) {
-            shift8_treb_debug_log('No media found for listing', array(
+            shift8_treb_log('No media found for listing', array(
                 'mls_number' => esc_html($mls_number),
                 'error' => is_wp_error($media_items) ? $media_items->get_error_message() : 'No media items'
             ));
@@ -602,7 +540,7 @@ class Shift8_TREB_Post_Manager {
 
         $stats['total'] = count($media_items);
         
-        shift8_treb_debug_log('Processing listing images', array(
+        shift8_treb_log('Processing listing images', array(
             'mls_number' => esc_html($mls_number),
             'image_count' => $stats['total']
         ));
@@ -617,7 +555,7 @@ class Shift8_TREB_Post_Manager {
         $max_images = apply_filters('shift8_treb_max_images_per_listing', 0); // 0 = unlimited
         if ($max_images > 0) {
             $media_items = array_slice($media_items, 0, $max_images);
-            shift8_treb_debug_log('Limited images per listing', array(
+            shift8_treb_log('Limited images per listing', array(
                 'mls_number' => esc_html($mls_number),
                 'original_count' => $original_count,
                 'limited_count' => count($media_items),
@@ -631,7 +569,7 @@ class Shift8_TREB_Post_Manager {
         $batch_mode = !isset($this->settings['batch_image_processing']) || $this->settings['batch_image_processing']; // Default: true
         
         if ($skip_images) {
-            shift8_treb_debug_log('Skipping image download for fast sync', array(
+            shift8_treb_log('Skipping image download for fast sync', array(
                 'mls_number' => esc_html($mls_number)
             ));
             
@@ -679,7 +617,7 @@ class Shift8_TREB_Post_Manager {
                 // Fallback: Store external URL for future retry or display
                 $this->store_external_image_reference($post_id, $image_url, $mls_number, $index + 1, $is_preferred);
                 
-                shift8_treb_debug_log('Image download failed, stored external reference', array(
+                shift8_treb_log('Image download failed, stored external reference', array(
                     'mls_number' => esc_html($mls_number),
                     'image_url' => esc_html($image_url),
                     'index' => $index
@@ -715,7 +653,7 @@ class Shift8_TREB_Post_Manager {
             
             $priority_type = $first_image_id ? 'first_image' : ($preferred_image_id ? 'preferred' : 'first_successful');
             
-            shift8_treb_debug_log('Set featured image', array(
+            shift8_treb_log('Set featured image', array(
                 'mls_number' => esc_html($mls_number),
                 'attachment_id' => $featured_image_id,
                 'priority_type' => $priority_type
@@ -723,7 +661,7 @@ class Shift8_TREB_Post_Manager {
         }
 
         // Log final statistics
-        shift8_treb_debug_log('Image processing completed', array(
+        shift8_treb_log('Image processing completed', array(
             'mls_number' => esc_html($mls_number),
             'stats' => $stats
         ));
@@ -747,7 +685,7 @@ class Shift8_TREB_Post_Manager {
         try {
             // Best Practice: Validate URL before attempting download
             if (!filter_var($image_url, FILTER_VALIDATE_URL)) {
-                shift8_treb_debug_log('Invalid image URL', array(
+                shift8_treb_log('Invalid image URL', array(
                     'url' => esc_html($image_url),
                     'mls_number' => esc_html($mls_number)
                 ));
@@ -771,7 +709,7 @@ class Shift8_TREB_Post_Manager {
             ));
             
             if (is_wp_error($response)) {
-                shift8_treb_debug_log('Image download failed', array(
+                shift8_treb_log('Image download failed', array(
                     'url' => esc_html($image_url),
                     'error' => $response->get_error_message(),
                     'mls_number' => esc_html($mls_number)
@@ -781,7 +719,7 @@ class Shift8_TREB_Post_Manager {
 
             $response_code = wp_remote_retrieve_response_code($response);
             if ($response_code !== 200) {
-                shift8_treb_debug_log('Image download HTTP error', array(
+                shift8_treb_log('Image download HTTP error', array(
                     'url' => esc_html($image_url),
                     'response_code' => $response_code,
                     'mls_number' => esc_html($mls_number)
@@ -797,7 +735,7 @@ class Shift8_TREB_Post_Manager {
             // Best Practice: Validate image data
             $image_size = strlen($image_data);
             if ($image_size < 1024) { // Less than 1KB is likely not a valid image
-                shift8_treb_debug_log('Image too small', array(
+                shift8_treb_log('Image too small', array(
                     'url' => esc_html($image_url),
                     'size' => $image_size,
                     'mls_number' => esc_html($mls_number)
@@ -816,7 +754,7 @@ class Shift8_TREB_Post_Manager {
             $upload = wp_upload_bits($filename, null, $image_data);
             
             if ($upload['error']) {
-                shift8_treb_debug_log('WordPress upload failed', array(
+                shift8_treb_log('WordPress upload failed', array(
                     'error' => $upload['error'],
                     'mls_number' => esc_html($mls_number),
                     'filename' => esc_html($filename)
@@ -840,7 +778,7 @@ class Shift8_TREB_Post_Manager {
                 if (file_exists($upload['file'])) {
                     wp_delete_file($upload['file']);
                 }
-                shift8_treb_debug_log('Attachment creation failed', array(
+                shift8_treb_log('Attachment creation failed', array(
                     'error' => esc_html($attachment_id->get_error_message()),
                     'post_id' => $post_id,
                     'mls_number' => esc_html($mls_number),
@@ -852,7 +790,7 @@ class Shift8_TREB_Post_Manager {
             // Verify post_parent was set correctly (debugging for post_parent issue)
             $created_attachment = get_post($attachment_id);
             if ($created_attachment && $created_attachment->post_parent != $post_id) {
-                shift8_treb_debug_log('Post parent mismatch detected', array(
+                shift8_treb_log('Post parent mismatch detected', array(
                     'attachment_id' => $attachment_id,
                     'expected_parent' => $post_id,
                     'actual_parent' => $created_attachment->post_parent,
@@ -880,7 +818,7 @@ class Shift8_TREB_Post_Manager {
             update_post_meta($attachment_id, '_treb_image_number', intval($image_number));
             update_post_meta($attachment_id, '_treb_source_url', esc_url_raw($image_url));
 
-            shift8_treb_debug_log('Image downloaded successfully', array(
+            shift8_treb_log('Image downloaded successfully', array(
                 'attachment_id' => $attachment_id,
                 'mls_number' => esc_html($mls_number),
                 'image_number' => $image_number,
@@ -890,7 +828,7 @@ class Shift8_TREB_Post_Manager {
             return $attachment_id;
 
         } catch (Exception $e) {
-            shift8_treb_debug_log('Image download exception', array(
+            shift8_treb_log('Image download exception', array(
                 'url' => esc_html($image_url),
                 'error' => esc_html($e->getMessage()),
                 'mls_number' => esc_html($mls_number)
@@ -970,7 +908,7 @@ class Shift8_TREB_Post_Manager {
         sleep(1);
         
         // Second attempt (one retry only)
-        shift8_treb_debug_log('Retrying image download', array(
+        shift8_treb_log('Retrying image download', array(
             'mls_number' => esc_html($mls_number),
             'image_url' => esc_html($image_url),
             'attempt' => 2
@@ -979,7 +917,7 @@ class Shift8_TREB_Post_Manager {
         $attachment_id = $this->download_and_attach_image($image_url, $post_id, $mls_number, $image_number);
         
         if (!$attachment_id) {
-            shift8_treb_debug_log('Image download failed after retry', array(
+            shift8_treb_log('Image download failed after retry', array(
                 'mls_number' => esc_html($mls_number),
                 'image_url' => esc_html($image_url)
             ));
@@ -1036,7 +974,7 @@ class Shift8_TREB_Post_Manager {
      * @return array Updated statistics
      */
     private function process_images_batch($post_id, $media_items, $mls_number, $stats) {
-        shift8_treb_debug_log('Starting batch image processing', array(
+        shift8_treb_log('Starting batch image processing', array(
             'mls_number' => esc_html($mls_number),
             'image_count' => count($media_items)
         ));
@@ -1085,7 +1023,7 @@ class Shift8_TREB_Post_Manager {
         }
 
         if (empty($batch_requests)) {
-            shift8_treb_debug_log('No images to download in batch', array(
+            shift8_treb_log('No images to download in batch', array(
                 'mls_number' => esc_html($mls_number)
             ));
             return $stats;
@@ -1171,14 +1109,14 @@ class Shift8_TREB_Post_Manager {
             
             $priority_type = $first_image_id ? 'first_image' : ($preferred_image_id ? 'preferred' : 'first_successful');
             
-            shift8_treb_debug_log('Set featured image (batch)', array(
+            shift8_treb_log('Set featured image (batch)', array(
                 'mls_number' => esc_html($mls_number),
                 'attachment_id' => $featured_image_id,
                 'priority_type' => $priority_type
             ));
         }
 
-        shift8_treb_debug_log('Batch image processing completed', array(
+        shift8_treb_log('Batch image processing completed', array(
             'mls_number' => esc_html($mls_number),
             'stats' => $stats
         ));
@@ -1206,7 +1144,7 @@ class Shift8_TREB_Post_Manager {
         
         $batches = array_chunk($batch_requests, $batch_size);
         
-        shift8_treb_debug_log('Starting batch image processing', array(
+        shift8_treb_log('Starting batch image processing', array(
             'total_requests' => count($batch_requests),
             'batch_count' => count($batches),
             'batch_size' => $batch_size,
@@ -1241,7 +1179,7 @@ class Shift8_TREB_Post_Manager {
                 usleep($adaptive_delay * 1000000); // Convert to microseconds
             }
             
-            shift8_treb_debug_log('Batch completed', array(
+            shift8_treb_log('Batch completed', array(
                 'batch' => $batch_index + 1,
                 'batch_time' => round($batch_time, 2),
                 'requests_in_batch' => count($batch)
@@ -1381,7 +1319,7 @@ class Shift8_TREB_Post_Manager {
             if (file_exists($upload['file'])) {
                 wp_delete_file($upload['file']);
             }
-            shift8_treb_debug_log('Batch attachment creation failed', array(
+            shift8_treb_log('Batch attachment creation failed', array(
                 'error' => esc_html($attachment_id->get_error_message()),
                 'post_id' => $post_id,
                 'mls_number' => esc_html($mls_number),
@@ -1393,7 +1331,7 @@ class Shift8_TREB_Post_Manager {
         // Verify post_parent was set correctly (debugging for post_parent issue)
         $created_attachment = get_post($attachment_id);
         if ($created_attachment && $created_attachment->post_parent != $post_id) {
-            shift8_treb_debug_log('Batch post parent mismatch detected', array(
+            shift8_treb_log('Batch post parent mismatch detected', array(
                 'attachment_id' => $attachment_id,
                 'expected_parent' => $post_id,
                 'actual_parent' => $created_attachment->post_parent,
@@ -1423,40 +1361,6 @@ class Shift8_TREB_Post_Manager {
         return $attachment_id;
     }
 
-    /**
-     * Store additional listing metadata
-     *
-     * @since 1.0.0
-     * @param int $post_id Post ID
-     * @param array $listing Listing data
-     * @return void
-     */
-    private function store_listing_metadata($post_id, $listing) {
-        // Store key listing data as post meta
-        $meta_fields = array(
-            'listing_mls_number' => 'ListingKey',
-            'listing_price' => 'ListPrice',
-            'listing_bedrooms' => 'BedroomsTotal',
-            'listing_bathrooms' => 'BathroomsTotal',
-            'listing_living_area' => 'LivingArea',
-            'listing_property_type' => 'PropertyType',
-            'listing_city' => 'City',
-            'listing_province' => 'StateOrProvince',
-            'listing_postal_code' => 'PostalCode',
-            'listing_agent_key' => 'ListAgentKey',
-            'listing_status' => 'StandardStatus',
-            'listing_last_updated' => 'ModificationTimestamp'
-        );
-
-        foreach ($meta_fields as $meta_key => $api_field) {
-            if (isset($listing[$api_field])) {
-                update_post_meta($post_id, $meta_key, sanitize_text_field($listing[$api_field]));
-            }
-        }
-
-        // Store sync timestamp
-        update_post_meta($post_id, 'listing_sync_date', current_time('mysql'));
-    }
 
     /**
      * Get default listing template
@@ -1845,7 +1749,7 @@ var ws_height = '300';
         ));
 
         if (is_wp_error($response)) {
-            shift8_treb_debug_log('Geocoding API error', array(
+            shift8_treb_log('Geocoding API error', array(
                 'address' => esc_html($address),
                 'error' => $response->get_error_message()
             ));
@@ -1854,7 +1758,7 @@ var ws_height = '300';
 
         $response_code = wp_remote_retrieve_response_code($response);
         if ($response_code !== 200) {
-            shift8_treb_debug_log('Geocoding API HTTP error', array(
+            shift8_treb_log('Geocoding API HTTP error', array(
                 'address' => esc_html($address),
                 'response_code' => $response_code
             ));
@@ -1865,14 +1769,14 @@ var ws_height = '300';
         $data = json_decode($body, true);
 
         if (json_last_error() !== JSON_ERROR_NONE || !isset($data['status'])) {
-            shift8_treb_debug_log('Geocoding API invalid response', array(
+            shift8_treb_log('Geocoding API invalid response', array(
                 'address' => esc_html($address)
             ));
             return false;
         }
 
         if ($data['status'] !== 'OK' || empty($data['results'])) {
-            shift8_treb_debug_log('Geocoding API no results', array(
+            shift8_treb_log('Geocoding API no results', array(
                 'address' => esc_html($address),
                 'status' => $data['status']
             ));
@@ -1889,7 +1793,7 @@ var ws_height = '300';
         // Cache result for 24 hours
         set_transient($cache_key, $coordinates, DAY_IN_SECONDS);
 
-        shift8_treb_debug_log('Address geocoded successfully', array(
+        shift8_treb_log('Address geocoded successfully', array(
             'address' => esc_html($address),
             'coordinates' => $coordinates
         ));
@@ -2023,6 +1927,22 @@ var ws_height = '300';
         $base64_encoded = base64_encode($comma_separated);
         
         return $base64_encoded;
+    }
+
+    /**
+     * Get Google Map HTML for listing
+     *
+     * @since 1.2.0
+     * @param array $listing Listing data
+     * @return string Google Map HTML div or empty string
+     */
+    private function get_google_map_html($listing) {
+        // Only show map if we have Google Maps API key and coordinates
+        if (!shift8_treb_has_google_maps_api_key() || !shift8_treb_has_listing_coordinates($listing)) {
+            return '';
+        }
+        
+        return '<div class="shift8-treb-googlemap" id="shift8-treb-map" style="height: 400px; width: 100%;">Loading map...</div>';
     }
 
     /**

@@ -153,14 +153,14 @@ class Shift8_TREB_Sync_Service {
             // Test API connection
             $connection_test = $this->test_connection();
             if (!$connection_test['success']) {
-                throw new Exception('API connection failed: ' . $connection_test['message']);
+                throw new Exception('API connection failed: ' . esc_html($connection_test['message']));
             }
 
             // Fetch listings from AMPRE API
             $listings = $this->ampre_service->get_listings();
             
             if (is_wp_error($listings)) {
-                throw new Exception('API request failed: ' . $listings->get_error_message());
+                throw new Exception('API request failed: ' . esc_html($listings->get_error_message()));
             }
 
             if (empty($listings)) {

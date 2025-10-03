@@ -46,6 +46,9 @@ This plugin replaces manual listing management by automatically fetching propert
 - Dry-run capability for testing configurations
 - Verbose output options for debugging
 - Batch processing with progress indicators
+- **Direct MLS import** for specific listings
+- **Raw API diagnostics** for troubleshooting
+- **Sync mode management** (incremental vs age-based)
 
 ## Installation
 
@@ -100,6 +103,7 @@ This plugin replaces manual listing management by automatically fetching propert
 - `%WALKSCORECODE%` - WalkScore widget (if configured)
 
 #### Additional Features
+- `%GOOGLEMAPCODE%` - Google Maps widget (requires API key)
 - `%PHONEMSG%` - Contact phone message
 - `%VIRTUALTOUR%` - Virtual tour link (if available)
 - `%WPBLOG%` - WordPress site URL
@@ -160,6 +164,42 @@ wp shift8-treb logs --level=error
 
 # Clear all logs
 wp shift8-treb clear_logs --yes
+```
+
+### Direct MLS Import
+```bash
+# Import specific MLS numbers
+wp shift8-treb import W12345678,C12345679
+
+# Import with dry-run
+wp shift8-treb import W12345678 --dry-run
+
+# Import with verbose output
+wp shift8-treb import W12345678 --verbose
+```
+
+### API Diagnostics
+```bash
+# Analyze raw API response for diagnostics
+wp shift8-treb analyze --limit=100 --show-agents
+
+# Search for specific MLS numbers
+wp shift8-treb analyze --search=W12345678,C12345679
+
+# Check listings from last 30 days
+wp shift8-treb analyze --days=30 --limit=200
+```
+
+### Sync Mode Management
+```bash
+# Check current sync status
+wp shift8-treb sync_status
+
+# Reset incremental sync (forces age-based sync)
+wp shift8-treb reset_sync
+
+# Reset with confirmation skip
+wp shift8-treb reset_sync --yes
 ```
 
 ## Technical Details
@@ -256,7 +296,17 @@ This plugin is built to meet WordPress.org plugin directory standards:
   - Adaptive timeouts (5-12 seconds) based on execution limits
   - Intelligent delays between batches for server compatibility
 - **🔗 Enhanced Media Management**: Fixed post_parent linking with debugging and auto-correction
-- **🧪 Comprehensive Test Coverage**: 66 tests with 149 assertions - zero tolerance policy maintained
+- **🗺️ Google Maps Integration**: Interactive maps with conditional display and WordPress best practices
+  - Custom HTML placeholder: `%GOOGLEMAPCODE%`
+  - Unique function naming following WordPress conventions
+  - Only displays on single listing posts to avoid conflicts
+- **🔧 Direct MLS Import**: New WP-CLI command for importing specific MLS numbers
+- **📊 API Diagnostics**: Raw API response analysis for troubleshooting without full import
+- **⚙️ Sync Mode Management**: Control over incremental vs age-based synchronization
+  - `wp shift8-treb sync_status` - View current sync mode and settings
+  - `wp shift8-treb reset_sync` - Reset incremental sync timestamp
+- **🐛 Bug Fixes**: Fixed "Clear Logs" multiple confirmation dialogs
+- **🧪 Comprehensive Test Coverage**: 67 tests with 157 assertions - zero tolerance policy maintained
 - **📚 Updated Documentation**: Enhanced .cursorrules with performance patterns and best practices
 
 ### Version 1.1.0

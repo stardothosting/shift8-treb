@@ -109,7 +109,7 @@ class Shift8_TREB_AMPRE_Service {
             $query_params = $this->build_query_parameters();
             $endpoint = 'Property?' . $query_params;
 
-            shift8_treb_debug_log('Making AMPRE API request', array(
+            shift8_treb_log('Making AMPRE API request', array(
                 'endpoint' => esc_html($endpoint),
                 'full_url' => esc_html(self::API_BASE_URL . $endpoint),
                 'settings' => $this->settings
@@ -118,14 +118,14 @@ class Shift8_TREB_AMPRE_Service {
             $response = $this->make_request($endpoint);
 
             if (is_wp_error($response)) {
-                throw new Exception('API request failed: ' . $response->get_error_message());
+                throw new Exception('API request failed: ' . esc_html($response->get_error_message()));
             }
 
             $response_code = wp_remote_retrieve_response_code($response);
             $response_body = wp_remote_retrieve_body($response);
 
             if ($response_code !== 200) {
-                throw new Exception('API returned status code: ' . $response_code);
+                throw new Exception('API returned status code: ' . esc_html($response_code));
             }
 
             $data = json_decode($response_body, true);
@@ -138,14 +138,14 @@ class Shift8_TREB_AMPRE_Service {
                 throw new Exception('Unexpected API response format');
             }
 
-            shift8_treb_debug_log('AMPRE API response received', array(
+            shift8_treb_log('AMPRE API response received', array(
                 'listings_count' => count($data['value'])
             ));
 
             return $data['value'];
 
         } catch (Exception $e) {
-            shift8_treb_debug_log('AMPRE API error', array(
+            shift8_treb_log('AMPRE API error', array(
                 'error' => esc_html($e->getMessage())
             ));
             return new WP_Error('ampre_api_error', $e->getMessage());
@@ -239,19 +239,27 @@ class Shift8_TREB_AMPRE_Service {
                 throw new Exception('Listing key is required');
             }
 
-            $endpoint = "Property('" . sanitize_text_field($listing_key) . "')?\$expand=Media";
+            // Use filter-based approach instead of direct property access with $expand
+            // This avoids the 400 error from unsupported $expand=Media
+            $filter = "ListingKey eq '" . sanitize_text_field($listing_key) . "'";
+            $endpoint = 'Property?$filter=' . $filter;
+            
+            shift8_treb_log('Making AMPRE API request for specific property', array(
+                'listing_key' => esc_html($listing_key),
+                'endpoint' => esc_html($endpoint)
+            ));
             
             $response = $this->make_request($endpoint);
 
             if (is_wp_error($response)) {
-                throw new Exception('API request failed: ' . $response->get_error_message());
+                throw new Exception('API request failed: ' . esc_html($response->get_error_message()));
             }
 
             $response_code = wp_remote_retrieve_response_code($response);
             $response_body = wp_remote_retrieve_body($response);
 
             if ($response_code !== 200) {
-                throw new Exception('API returned status code: ' . $response_code);
+                throw new Exception('API returned status code: ' . esc_html($response_code));
             }
 
             $data = json_decode($response_body, true);
@@ -260,10 +268,19 @@ class Shift8_TREB_AMPRE_Service {
                 throw new Exception('Invalid JSON response from API');
             }
 
-            return $data;
+            if (!isset($data['value']) || !is_array($data['value'])) {
+                throw new Exception('Unexpected API response format');
+            }
+
+            // Return the first (and should be only) result
+            if (empty($data['value'])) {
+                return null; // Property not found
+            }
+
+            return $data['value'][0];
 
         } catch (Exception $e) {
-            shift8_treb_debug_log('AMPRE API get_property error', array(
+            shift8_treb_log('AMPRE API get_property error', array(
                 'listing_key' => esc_html($listing_key),
                 'error' => esc_html($e->getMessage())
             ));
@@ -292,7 +309,7 @@ class Shift8_TREB_AMPRE_Service {
             $filter = "ResourceRecordKey eq '" . sanitize_text_field($listing_key) . "'";
             $endpoint = 'Media?$filter=' . $filter . '&$orderby=Order,PreferredPhotoYN desc';
 
-            shift8_treb_debug_log('Making AMPRE Media API request', array(
+            shift8_treb_log('Making AMPRE Media API request', array(
                 'listing_key' => esc_html($listing_key),
                 'endpoint' => esc_html($endpoint)
             ));
@@ -300,14 +317,14 @@ class Shift8_TREB_AMPRE_Service {
             $response = $this->make_request($endpoint);
 
             if (is_wp_error($response)) {
-                throw new Exception('Media API request failed: ' . $response->get_error_message());
+                throw new Exception('Media API request failed: ' . esc_html($response->get_error_message()));
             }
 
             $response_code = wp_remote_retrieve_response_code($response);
             $response_body = wp_remote_retrieve_body($response);
 
             if ($response_code !== 200) {
-                throw new Exception('Media API returned status code: ' . $response_code);
+                throw new Exception('Media API returned status code: ' . esc_html($response_code));
             }
 
             $data = json_decode($response_body, true);
@@ -329,7 +346,7 @@ class Shift8_TREB_AMPRE_Service {
                 }
             }
 
-            shift8_treb_debug_log('Media API response received', array(
+            shift8_treb_log('Media API response received', array(
                 'listing_key' => esc_html($listing_key),
                 'total_media' => count($data['value']),
                 'photos_found' => count($photos)
@@ -338,7 +355,7 @@ class Shift8_TREB_AMPRE_Service {
             return $photos;
 
         } catch (Exception $e) {
-            shift8_treb_debug_log('AMPRE Media API error', array(
+            shift8_treb_log('AMPRE Media API error', array(
                 'listing_key' => esc_html($listing_key),
                 'error' => esc_html($e->getMessage())
             ));
@@ -358,7 +375,7 @@ class Shift8_TREB_AMPRE_Service {
         
         foreach ($required_fields as $field) {
             if (!isset($listing[$field]) || empty($listing[$field])) {
-                shift8_treb_debug_log('Invalid listing data - missing field', array(
+                shift8_treb_log('Invalid listing data - missing field', array(
                     'missing_field' => esc_html($field),
                     'listing_key' => isset($listing['ListingKey']) ? esc_html($listing['ListingKey']) : 'unknown'
                 ));

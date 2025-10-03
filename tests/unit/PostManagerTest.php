@@ -268,33 +268,6 @@ class PostManagerTest extends TestCase {
         $this->assertIsInt($result, 'Should return category ID as integer');
     }
 
-    /**
-     * Test post meta storage
-     */
-    public function test_store_listing_meta() {
-        // Use reflection to test private method
-        $reflection = new \ReflectionClass($this->post_manager);
-        $method = $reflection->getMethod('store_listing_metadata');
-        $method->setAccessible(true);
-        
-        // Mock update_post_meta calls (the method actually uses update_post_meta)
-        Functions\when('update_post_meta')->justReturn(true);
-        
-        $listing_data = array(
-            'ListingKey' => 'X12345678',
-            'ListPrice' => 750000.0,
-            'ListAgentKey' => '1525',
-            'BedroomsTotal' => 3,
-            'BathroomsTotalInteger' => 2,
-            'BuildingAreaTotal' => 1500,
-            'ContractStatus' => 'Available',
-            'ModificationTimestamp' => '2024-10-01T12:00:00Z'
-        );
-        
-        $method->invoke($this->post_manager, 123, $listing_data);
-        
-        $this->assertTrue(true, 'Meta storage completed without errors');
-    }
 
     /**
      * Test image download and processing
@@ -697,5 +670,48 @@ class PostManagerTest extends TestCase {
         
         $this->assertIsInt($result);
         $this->assertGreaterThan(0, $result);
+    }
+
+
+    /**
+     * Test base64 encoded images generation
+     */
+    public function test_get_base64_encoded_images() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('get_base64_encoded_images');
+        $method->setAccessible(true);
+
+        $image_urls = array(
+            'http://example.com/image1.jpg',
+            'http://example.com/image2.jpg'
+        );
+
+        $result = $method->invoke($this->post_manager, $image_urls);
+        
+        $this->assertIsString($result);
+        $this->assertNotEmpty($result);
+        
+        // Should be base64 encoded
+        $decoded = base64_decode($result, true);
+        $this->assertNotFalse($decoded);
+        
+        // Should contain URL encoded image URLs
+        $this->assertStringContainsString('http', $decoded);
+    }
+
+
+    /**
+     * Test file extension detection from content type
+     */
+    public function test_get_file_extension_from_content_type() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('get_file_extension_from_content_type');
+        $method->setAccessible(true);
+
+        $this->assertEquals('jpg', $method->invoke($this->post_manager, 'image/jpeg'));
+        $this->assertEquals('png', $method->invoke($this->post_manager, 'image/png'));
+        $this->assertEquals('gif', $method->invoke($this->post_manager, 'image/gif'));
+        $this->assertEquals('webp', $method->invoke($this->post_manager, 'image/webp'));
+        $this->assertEquals('jpg', $method->invoke($this->post_manager, 'unknown/type')); // Default
     }
 }

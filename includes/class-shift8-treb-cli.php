@@ -38,6 +38,9 @@ class Shift8_TREB_CLI {
      * [--listing-age=<days>]
      * : Override listing age in days (ignores incremental sync)
      *
+     * [--mls=<number>]
+     * : Import specific MLS number(s) - comma separated (e.g. W12436591,C12380184)
+     *
      * [--skip-images]
      * : Skip image downloads for faster sync (stores external URLs only)
      *
@@ -61,6 +64,9 @@ class Shift8_TREB_CLI {
      *     # Override listing age (ignores incremental sync)
      *     wp shift8-treb sync --listing-age=7
      *
+     *     # Import specific MLS numbers
+     *     wp shift8-treb sync --mls=W12436591,C12380184
+     *
      * @when after_wp_load
      */
     public function sync($args, $assoc_args) {
@@ -69,6 +75,7 @@ class Shift8_TREB_CLI {
         $limit = isset($assoc_args['limit']) ? intval($assoc_args['limit']) : null;
         $force = isset($assoc_args['force']);
         $listing_age = isset($assoc_args['listing-age']) ? intval($assoc_args['listing-age']) : null;
+        $mls_numbers = isset($assoc_args['mls']) ? $assoc_args['mls'] : null;
 
         WP_CLI::line('=== Shift8 TREB Manual Sync ===');
         
@@ -84,6 +91,15 @@ class Shift8_TREB_CLI {
             $base_settings = get_option('shift8_treb_settings', array());
             if (empty($base_settings['bearer_token']) && !$force) {
                 WP_CLI::error('Bearer token not configured. Use --force to override or configure in admin settings.');
+            }
+
+            // Handle MLS-specific import
+            if ($mls_numbers !== null) {
+                $mls_list = array_map('trim', explode(',', $mls_numbers));
+                WP_CLI::line("🎯 Direct MLS Import Mode: " . implode(', ', $mls_list));
+                
+                // For MLS-specific import, we'll handle this separately
+                return $this->import_specific_mls($mls_list, $dry_run, $verbose, $base_settings);
             }
 
             // Handle listing age override
@@ -374,6 +390,541 @@ class Shift8_TREB_CLI {
         } catch (Exception $e) {
             WP_CLI::error('Exception: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Analyze raw API response for diagnostics
+     *
+     * @since 1.2.0
+     * 
+     * ## OPTIONS
+     * 
+     * [--limit=<number>]
+     * : Maximum number of listings to analyze
+     * ---
+     * default: 50
+     * ---
+     * 
+     * [--search=<mls>]
+     * : Search for specific MLS number(s) (comma-separated)
+     * 
+     * [--show-agents]
+     * : Show unique agent IDs and their listing counts
+     * 
+     * [--days=<number>]
+     * : Number of days to look back
+     * ---
+     * default: 90
+     * ---
+     * 
+     * ## EXAMPLES
+     * 
+     *     wp shift8-treb analyze --limit=100 --show-agents
+     *     wp shift8-treb analyze --search=W12436591,C12380184
+     *     wp shift8-treb analyze --days=30 --limit=200
+     * 
+     * @when after_wp_load
+     */
+    public function analyze($args, $assoc_args) {
+        $limit = intval($assoc_args['limit'] ?? 50);
+        $search_mls = $assoc_args['search'] ?? '';
+        $show_agents = isset($assoc_args['show-agents']);
+        $days = intval($assoc_args['days'] ?? 90);
+        
+        WP_CLI::line('=== TREB API Diagnostic Analysis ===');
+        WP_CLI::line("Limit: {$limit} listings");
+        WP_CLI::line("Days back: {$days}");
+        
+        if ($search_mls) {
+            WP_CLI::line("Searching for: {$search_mls}");
+        }
+        
+        // Get settings and initialize AMPRE service
+        $settings = get_option('shift8_treb_settings', array());
+        
+        if (empty($settings['bearer_token'])) {
+            WP_CLI::error('Bearer token not configured');
+        }
+        
+        // Decrypt token using the plugin's decryption function
+        $decrypted_token = shift8_treb_decrypt_data($settings['bearer_token']);
+        
+        if (empty($decrypted_token)) {
+            WP_CLI::error('Failed to decrypt bearer token');
+        }
+        
+        // Prepare settings for AMPRE service
+        $ampre_settings = array_merge($settings, array(
+            'bearer_token' => $decrypted_token,
+            'listing_age_days' => $days
+        ));
+        
+        // Initialize AMPRE service
+        require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-ampre-service.php';
+        $ampre_service = new Shift8_TREB_AMPRE_Service($ampre_settings);
+        
+        WP_CLI::line('Testing API connection...');
+        
+        try {
+            $connection_result = $ampre_service->test_connection();
+            if (!$connection_result['success']) {
+                WP_CLI::error('API connection failed: ' . $connection_result['message']);
+            }
+            WP_CLI::success('API connection successful');
+        } catch (Exception $e) {
+            WP_CLI::error('API connection error: ' . esc_html($e->getMessage()));
+        }
+        
+        WP_CLI::line('Fetching listings data...');
+        
+        try {
+            $listings_result = $ampre_service->get_listings();
+            
+            if (is_wp_error($listings_result)) {
+                WP_CLI::error('Failed to fetch listings: ' . $listings_result->get_error_message());
+            }
+            
+            $listings = $listings_result;
+            $total_found = count($listings);
+            
+            // Limit the listings for analysis
+            if ($limit > 0 && $total_found > $limit) {
+                $listings = array_slice($listings, 0, $limit);
+            }
+            
+            WP_CLI::success("Found {$total_found} total listings, analyzing first " . count($listings));
+            
+            // Analyze the data
+            $this->analyze_listings_data($listings, $search_mls, $show_agents, $settings);
+            
+        } catch (Exception $e) {
+            WP_CLI::error('API error: ' . esc_html($e->getMessage()));
+        }
+    }
+    
+    /**
+     * Analyze listings data for diagnostics
+     *
+     * @since 1.2.0
+     * @param array $listings Listings data
+     * @param string $search_mls MLS numbers to search for
+     * @param bool $show_agents Whether to show agent analysis
+     * @param array $settings Plugin settings
+     */
+    private function analyze_listings_data($listings, $search_mls, $show_agents, $settings) {
+        $search_list = array();
+        if (!empty($search_mls)) {
+            $search_list = array_map('trim', explode(',', $search_mls));
+        }
+        
+        $agent_counts = array();
+        $found_listings = array();
+        $member_ids = isset($settings['member_id']) ? trim($settings['member_id']) : '';
+        $configured_members = array();
+        
+        if (!empty($member_ids)) {
+            $configured_members = array_map('trim', explode(',', $member_ids));
+        }
+        
+        WP_CLI::line('');
+        WP_CLI::line('=== ANALYSIS RESULTS ===');
+        
+        foreach ($listings as $listing) {
+            $mls_number = $listing['ListingKey'] ?? 'unknown';
+            $agent_id = $listing['ListAgentKey'] ?? 'unknown';
+            $address = $listing['UnparsedAddress'] ?? 'unknown';
+            $price = isset($listing['ListPrice']) ? '$' . number_format($listing['ListPrice']) : 'unknown';
+            
+            // Count agents
+            if ($agent_id !== 'unknown') {
+                $agent_counts[$agent_id] = ($agent_counts[$agent_id] ?? 0) + 1;
+            }
+            
+            // Check for specific MLS numbers
+            if (!empty($search_list) && in_array($mls_number, $search_list)) {
+                $is_our_agent = in_array($agent_id, $configured_members, true);
+                $category = $is_our_agent ? 'Listings' : 'OtherListings';
+                
+                // Calculate listing age
+                $modification_timestamp = $listing['ModificationTimestamp'] ?? '';
+                $listing_date = $listing['ListingContractDate'] ?? '';
+                $days_ago = '';
+                $date_info = '';
+                
+                if (!empty($modification_timestamp)) {
+                    $mod_time = strtotime($modification_timestamp);
+                    if ($mod_time) {
+                        $days_since_mod = floor((time() - $mod_time) / (24 * 60 * 60));
+                        $date_info = "Modified: " . date('Y-m-d H:i', $mod_time) . " ({$days_since_mod} days ago)";
+                    }
+                }
+                
+                if (!empty($listing_date)) {
+                    $list_time = strtotime($listing_date);
+                    if ($list_time) {
+                        $days_since_list = floor((time() - $list_time) / (24 * 60 * 60));
+                        $list_info = "Listed: " . date('Y-m-d', $list_time) . " ({$days_since_list} days ago)";
+                        $date_info = $date_info ? $date_info . " | " . $list_info : $list_info;
+                    }
+                }
+                
+                $found_listings[] = array(
+                    'mls' => $mls_number,
+                    'agent_id' => $agent_id,
+                    'address' => $address,
+                    'price' => $price,
+                    'category' => $category,
+                    'is_configured' => $is_our_agent,
+                    'date_info' => $date_info,
+                    'modification_timestamp' => $modification_timestamp,
+                    'listing_date' => $listing_date
+                );
+            }
+        }
+        
+        // Show search results
+        if (!empty($search_list)) {
+            WP_CLI::line('');
+            WP_CLI::line('=== SEARCH RESULTS ===');
+            
+            if (empty($found_listings)) {
+                WP_CLI::warning('None of the searched MLS numbers were found in the current data:');
+                foreach ($search_list as $mls) {
+                    WP_CLI::line("  ❌ {$mls} - NOT FOUND");
+                }
+            } else {
+                WP_CLI::success('Found ' . count($found_listings) . ' of ' . count($search_list) . ' searched listings:');
+                
+                foreach ($found_listings as $listing) {
+                    $status_icon = $listing['is_configured'] ? '✅' : '❌';
+                    $category_info = $listing['is_configured'] ? 'OUR AGENT (Listings)' : 'OTHER AGENT (OtherListings)';
+                    
+                    WP_CLI::line("  {$status_icon} {$listing['mls']} - Agent: {$listing['agent_id']} - {$category_info}");
+                    WP_CLI::line("      Address: {$listing['address']}");
+                    WP_CLI::line("      Price: {$listing['price']}");
+                    
+                    if (!empty($listing['date_info'])) {
+                        WP_CLI::line("      📅 {$listing['date_info']}");
+                    }
+                    
+                    WP_CLI::line('');
+                }
+            }
+            
+            // Show missing listings
+            $found_mls = array_column($found_listings, 'mls');
+            $missing_mls = array_diff($search_list, $found_mls);
+            
+            if (!empty($missing_mls)) {
+                WP_CLI::warning('Missing listings (not in current API data):');
+                foreach ($missing_mls as $mls) {
+                    WP_CLI::line("  ❌ {$mls}");
+                }
+            }
+            
+            // Analyze sync timing issues
+            if (!empty($found_listings)) {
+                WP_CLI::line('');
+                WP_CLI::line('=== SYNC TIMING ANALYSIS ===');
+                
+                // Get last sync timestamp
+                $last_sync = get_option('shift8_treb_last_sync', '');
+                $sync_cutoff_days = intval($settings['listing_age_days'] ?? 90);
+                
+                WP_CLI::line("Plugin sync settings:");
+                WP_CLI::line("  Last incremental sync: " . ($last_sync ? $last_sync : 'Never (uses age-based filter)'));
+                WP_CLI::line("  Listing age filter: {$sync_cutoff_days} days");
+                WP_CLI::line('');
+                
+                foreach ($found_listings as $listing) {
+                    WP_CLI::line("Analysis for {$listing['mls']}:");
+                    
+                    if (!empty($listing['modification_timestamp'])) {
+                        $mod_time = strtotime($listing['modification_timestamp']);
+                        $days_since_mod = floor((time() - $mod_time) / (24 * 60 * 60));
+                        
+                        if ($days_since_mod > $sync_cutoff_days) {
+                            WP_CLI::warning("  ⚠️  Modified {$days_since_mod} days ago - OLDER than {$sync_cutoff_days} day filter!");
+                            WP_CLI::line("      This listing would be EXCLUDED from age-based sync");
+                        } else {
+                            WP_CLI::success("  ✅ Modified {$days_since_mod} days ago - within {$sync_cutoff_days} day filter");
+                        }
+                        
+                        if (!empty($last_sync)) {
+                            $last_sync_time = strtotime($last_sync);
+                            if ($last_sync_time && $mod_time > $last_sync_time) {
+                                WP_CLI::success("  ✅ Modified AFTER last sync - would be included in incremental sync");
+                            } else {
+                                WP_CLI::warning("  ⚠️  Modified BEFORE last sync - would be EXCLUDED from incremental sync");
+                            }
+                        }
+                    }
+                    
+                    WP_CLI::line('');
+                }
+                
+                WP_CLI::line('💡 Possible reasons for previous non-matching:');
+                WP_CLI::line('   1. Listings were older than the age filter when first synced');
+                WP_CLI::line('   2. Agent IDs changed after initial import');
+                WP_CLI::line('   3. Incremental sync missed updates due to timing');
+                WP_CLI::line('   4. Manual sync with different age settings was used');
+            }
+        }
+        
+        // Show agent analysis
+        if ($show_agents) {
+            WP_CLI::line('');
+            WP_CLI::line('=== AGENT ANALYSIS ===');
+            WP_CLI::line("Configured Member IDs: {$member_ids}");
+            WP_CLI::line('');
+            
+            arsort($agent_counts);
+            $top_agents = array_slice($agent_counts, 0, 20, true);
+            
+            WP_CLI::line('Top 20 Agent IDs by listing count:');
+            
+            foreach ($top_agents as $agent_id => $count) {
+                $is_configured = in_array($agent_id, $configured_members, true);
+                $status = $is_configured ? '✅ CONFIGURED' : '❌ Not configured';
+                WP_CLI::line("  {$agent_id}: {$count} listings - {$status}");
+            }
+            
+            // Check if any configured agents have listings
+            $configured_with_listings = array_intersect_key($agent_counts, array_flip($configured_members));
+            
+            if (empty($configured_with_listings)) {
+                WP_CLI::warning('');
+                WP_CLI::warning('ISSUE: None of your configured member IDs have listings in the current data!');
+                WP_CLI::line('Consider updating member_id setting with active agent IDs from the list above.');
+            } else {
+                WP_CLI::success('');
+                WP_CLI::success('Your configured member IDs found in data:');
+                foreach ($configured_with_listings as $agent_id => $count) {
+                    WP_CLI::line("  ✅ {$agent_id}: {$count} listings");
+                }
+            }
+        }
+        
+        WP_CLI::line('');
+        WP_CLI::line("Total listings analyzed: " . count($listings));
+        WP_CLI::line("Unique agents found: " . count($agent_counts));
+    }
+
+    /**
+     * Import specific MLS numbers directly
+     *
+     * @since 1.2.0
+     * @param array $mls_list List of MLS numbers to import
+     * @param bool $dry_run Whether this is a dry run
+     * @param bool $verbose Whether to show verbose output
+     * @param array $settings Plugin settings
+     */
+    private function import_specific_mls($mls_list, $dry_run, $verbose, $settings) {
+        try {
+            // Decrypt token
+            $decrypted_token = shift8_treb_decrypt_data($settings['bearer_token']);
+            if (empty($decrypted_token)) {
+                WP_CLI::error('Failed to decrypt bearer token');
+            }
+
+            // Prepare settings for services
+            $service_settings = array_merge($settings, array(
+                'bearer_token' => $decrypted_token
+            ));
+
+            // Initialize services
+            require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-ampre-service.php';
+            require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-post-manager.php';
+            
+            $ampre_service = new Shift8_TREB_AMPRE_Service($service_settings);
+            $post_manager = new Shift8_TREB_Post_Manager($service_settings);
+
+            WP_CLI::line('Testing API connection...');
+            $connection_result = $ampre_service->test_connection();
+            if (!$connection_result['success']) {
+                WP_CLI::error('API connection failed: ' . $connection_result['message']);
+            }
+            WP_CLI::success('API connection successful');
+
+            $results = array(
+                'processed' => 0,
+                'created' => 0,
+                'updated' => 0,
+                'errors' => 0,
+                'not_found' => 0
+            );
+
+            WP_CLI::line('');
+            WP_CLI::line('Importing specific MLS numbers...');
+
+            foreach ($mls_list as $mls_number) {
+                WP_CLI::line("Processing MLS: {$mls_number}");
+                
+                try {
+                    // Get specific property from API
+                    $property_data = $ampre_service->get_property($mls_number);
+                    
+                    if (is_wp_error($property_data)) {
+                        WP_CLI::warning("  ❌ API Error: " . $property_data->get_error_message());
+                        $results['errors']++;
+                        continue;
+                    }
+
+                    if (empty($property_data)) {
+                        WP_CLI::warning("  ❌ Not found in API");
+                        $results['not_found']++;
+                        continue;
+                    }
+
+                    if ($verbose) {
+                        WP_CLI::line("  📍 Address: " . ($property_data['UnparsedAddress'] ?? 'N/A'));
+                        WP_CLI::line("  💰 Price: $" . number_format($property_data['ListPrice'] ?? 0));
+                        WP_CLI::line("  👤 Agent: " . ($property_data['ListAgentKey'] ?? 'N/A'));
+                    }
+
+                    if (!$dry_run) {
+                        // Process the listing
+                        $post_result = $post_manager->process_listing($property_data);
+                        
+                        if ($post_result['success']) {
+                            if (isset($post_result['created']) && $post_result['created']) {
+                                WP_CLI::success("  ✅ Created new post (ID: {$post_result['post_id']})");
+                                $results['created']++;
+                            } else {
+                                WP_CLI::success("  ✅ Updated existing post (ID: {$post_result['post_id']})");
+                                $results['updated']++;
+                            }
+                        } else {
+                            WP_CLI::warning("  ❌ Failed to process: " . ($post_result['message'] ?? 'Unknown error'));
+                            $results['errors']++;
+                        }
+                    } else {
+                        WP_CLI::line("  ✅ Would be processed (dry run)");
+                    }
+
+                    $results['processed']++;
+
+                } catch (Exception $e) {
+                    WP_CLI::warning("  ❌ Exception: " . esc_html($e->getMessage()));
+                    $results['errors']++;
+                }
+
+                WP_CLI::line('');
+            }
+
+            // Display summary
+            WP_CLI::line('');
+            WP_CLI::line('=== IMPORT SUMMARY ===');
+            WP_CLI::line("MLS Numbers Requested: " . count($mls_list));
+            WP_CLI::line("Successfully Processed: {$results['processed']}");
+            
+            if (!$dry_run) {
+                WP_CLI::line("Created: {$results['created']}");
+                WP_CLI::line("Updated: {$results['updated']}");
+            }
+            
+            WP_CLI::line("Not Found: {$results['not_found']}");
+            WP_CLI::line("Errors: {$results['errors']}");
+
+            if ($results['errors'] > 0) {
+                WP_CLI::warning('Some MLS numbers could not be imported. Check the output above for details.');
+            } else if ($results['processed'] === count($mls_list)) {
+                WP_CLI::success('All requested MLS numbers processed successfully!');
+            }
+
+        } catch (Exception $e) {
+            WP_CLI::error('Import failed: ' . esc_html($e->getMessage()));
+        }
+    }
+
+    /**
+     * Reset incremental sync timestamp
+     *
+     * Forces next sync to use age-based filtering instead of incremental sync.
+     * Useful when you've deleted posts and want to re-import them.
+     *
+     * @since 1.2.0
+     * 
+     * ## OPTIONS
+     * 
+     * [--yes]
+     * : Skip confirmation prompt
+     * 
+     * ## EXAMPLES
+     * 
+     *     wp shift8-treb reset-sync
+     *     wp shift8-treb reset-sync --yes
+     * 
+     * @when after_wp_load
+     */
+    public function reset_sync($args, $assoc_args) {
+        $skip_confirm = isset($assoc_args['yes']);
+        
+        $last_sync = get_option('shift8_treb_last_sync', '');
+        
+        if (empty($last_sync)) {
+            WP_CLI::success('Incremental sync is already disabled (using age-based filtering).');
+            return;
+        }
+        
+        WP_CLI::line('Current incremental sync timestamp: ' . $last_sync);
+        WP_CLI::line('');
+        WP_CLI::line('Resetting will force the next sync to use age-based filtering');
+        WP_CLI::line('instead of incremental sync. This is useful when you have deleted');
+        WP_CLI::line('posts and want to re-import them.');
+        WP_CLI::line('');
+        
+        if (!$skip_confirm) {
+            WP_CLI::confirm('Reset incremental sync timestamp?');
+        }
+        
+        delete_option('shift8_treb_last_sync');
+        
+        WP_CLI::success('Incremental sync timestamp reset successfully!');
+        WP_CLI::line('Next sync will use age-based filtering (listing_age_days setting).');
+    }
+
+    /**
+     * Show current sync status and settings
+     *
+     * @since 1.2.0
+     * 
+     * ## EXAMPLES
+     * 
+     *     wp shift8-treb sync-status
+     * 
+     * @when after_wp_load
+     */
+    public function sync_status($args, $assoc_args) {
+        $settings = get_option('shift8_treb_settings', array());
+        $last_sync = get_option('shift8_treb_last_sync', '');
+        $listing_age_days = $settings['listing_age_days'] ?? 90;
+        
+        WP_CLI::line('=== TREB Sync Status ===');
+        WP_CLI::line('');
+        
+        if (!empty($last_sync)) {
+            $last_sync_time = strtotime($last_sync);
+            $hours_ago = round((time() - $last_sync_time) / 3600, 1);
+            
+            WP_CLI::line('📊 Sync Mode: INCREMENTAL');
+            WP_CLI::line("📅 Last Sync: {$last_sync} ({$hours_ago} hours ago)");
+            WP_CLI::line('🔄 Next Sync: Will only fetch listings modified after last sync');
+            WP_CLI::warning('⚠️  Deleted posts will NOT be re-imported in incremental mode');
+            WP_CLI::line('');
+            WP_CLI::line('💡 To re-import deleted posts, run: wp shift8-treb reset-sync');
+        } else {
+            WP_CLI::line('📊 Sync Mode: AGE-BASED');
+            WP_CLI::line("📅 Age Filter: {$listing_age_days} days");
+            WP_CLI::line('🔄 Next Sync: Will fetch all listings from last ' . $listing_age_days . ' days');
+            WP_CLI::success('✅ Deleted posts will be re-imported in age-based mode');
+        }
+        
+        WP_CLI::line('');
+        WP_CLI::line('Settings:');
+        WP_CLI::line("  Listing Age Days: {$listing_age_days}");
+        WP_CLI::line("  Max Listings Per Query: " . ($settings['max_listings_per_query'] ?? 1000));
+        WP_CLI::line("  Member IDs: " . ($settings['member_id'] ?? 'Not configured'));
     }
 
     /**
