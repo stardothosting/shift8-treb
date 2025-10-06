@@ -1295,14 +1295,19 @@ class Shift8_TREB_Post_Manager {
 
         // Execute batch HTTP requests
         if (defined('WP_CLI') && WP_CLI) {
-            WP_CLI::line("  Downloading {" . count($batch_requests) . "} images...");
+            WP_CLI::line("  Downloading " . count($batch_requests) . " images...");
         }
         $batch_responses = $this->execute_batch_http_requests($batch_requests);
+        
+        if (defined('WP_CLI') && WP_CLI) {
+            WP_CLI::line("  Processing " . count($batch_responses) . " image responses...");
+        }
         
         // Process responses
         $featured_image_id = null;
         $preferred_image_id = null;
         $first_successful_image = null;
+        $first_image_id = null;
 
         foreach ($batch_responses as $response_data) {
             $index = $response_data['index'];
@@ -1329,6 +1334,10 @@ class Shift8_TREB_Post_Manager {
             if ($attachment_id) {
                 $stats['downloaded']++;
                 
+                if (defined('WP_CLI') && WP_CLI) {
+                    WP_CLI::line("    ✅ Image {$image_number}: Attachment ID {$attachment_id}");
+                }
+                
                 if (!$first_successful_image) {
                     $first_successful_image = $attachment_id;
                 }
@@ -1336,34 +1345,17 @@ class Shift8_TREB_Post_Manager {
                 if ($is_preferred) {
                     $preferred_image_id = $attachment_id;
                 }
+                
+                // Track first image (image_number = 1) for featured image priority
+                if ($image_number == 1) {
+                    $first_image_id = $attachment_id;
+                }
             } else {
                 $stats['failed']++;
-                $this->store_external_image_reference($post_id, $response_data['url'], $mls_number, $image_number, $is_preferred);
-            }
-        }
-
-        // Featured image priority logic:
-        // 1. First image (image_number = 1) - ALWAYS gets priority for consistency
-        // 2. Preferred image (PreferredPhotoYN = true) - secondary priority  
-        // 3. First successfully downloaded image - fallback
-        
-        // Find the first image (image_number = 1) among successful downloads
-        $first_image_id = null;
-        foreach ($batch_responses as $response_data) {
-            if ($response_data['image_number'] == 1 && !is_wp_error($response_data['response'])) {
-                $response_code = wp_remote_retrieve_response_code($response_data['response']);
-                if ($response_code === 200) {
-                    $attachment_id = $this->process_batch_image_response($response_data['response'], $post_id, $mls_number, 1);
-                    if ($attachment_id) {
-                        $first_image_id = $attachment_id;
-                        // Update stats since we processed this image here
-                        $stats['downloaded']++;
-                        if (!$first_successful_image) {
-                            $first_successful_image = $attachment_id;
-                        }
-                    }
+                if (defined('WP_CLI') && WP_CLI) {
+                    WP_CLI::line("    ❌ Image {$image_number}: Failed to process");
                 }
-                break;
+                $this->store_external_image_reference($post_id, $response_data['url'], $mls_number, $image_number, $is_preferred);
             }
         }
         
@@ -1375,6 +1367,10 @@ class Shift8_TREB_Post_Manager {
             $stats['featured_set'] = true;
             
             $priority_type = $first_image_id ? 'first_image' : ($preferred_image_id ? 'preferred' : 'first_successful');
+            
+            if (defined('WP_CLI') && WP_CLI) {
+                WP_CLI::line("    🖼️  Set featured image: ID {$featured_image_id} ({$priority_type})");
+            }
             
             shift8_treb_log('Set featured image (batch)', array(
                 'mls_number' => esc_html($mls_number),

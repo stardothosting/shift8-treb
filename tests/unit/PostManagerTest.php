@@ -56,9 +56,20 @@ class PostManagerTest extends TestCase {
         Functions\when('esc_html')->alias(function($text) { 
             return htmlspecialchars($text); 
         });
+        Functions\when('esc_url_raw')->alias(function($url) { 
+            return filter_var($url, FILTER_SANITIZE_URL); 
+        });
         Functions\when('get_option')->justReturn(array('debug_enabled' => '0'));
         Functions\when('wp_kses_post')->alias(function($content) { return strip_tags($content); });
         Functions\when('get_category_by_slug')->justReturn(false);
+        
+        // Mock WP_CLI for CLI output in tests
+        if (!defined('WP_CLI')) {
+            define('WP_CLI', true);
+        }
+        if (!class_exists('WP_CLI')) {
+            eval('class WP_CLI { public static function line($message) {} }');
+        }
         Functions\when('current_time')->justReturn(date('Y-m-d H:i:s'));
         Functions\when('wp_upload_bits')->justReturn(array(
             'file' => '/tmp/test.jpg',
@@ -987,4 +998,6 @@ class PostManagerTest extends TestCase {
         $this->assertNotContains('shift8_treb_city', $stored_keys);
         $this->assertNotContains('shift8_treb_bedrooms_total', $stored_keys);
     }
+
+    // TODO: Add batch image processing test when WP_CLI mocking is resolved
 }
