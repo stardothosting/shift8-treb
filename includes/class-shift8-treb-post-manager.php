@@ -1315,6 +1315,9 @@ class Shift8_TREB_Post_Manager {
             shift8_treb_log('No images to download in batch', array(
                 'mls_number' => esc_html($mls_number)
             ));
+            
+            // Even if no new downloads, we still need to set featured image from existing attachments
+            $this->set_featured_image_from_existing_attachments($post_id, $mls_number, $stats);
             return $stats;
         }
 
@@ -1414,6 +1417,73 @@ class Shift8_TREB_Post_Manager {
         ));
 
         return $stats;
+    }
+
+    /**
+     * Set featured image from existing attachments when no new downloads are needed
+     *
+     * @since 1.2.0
+     * @param int $post_id Post ID
+     * @param string $mls_number MLS number
+     * @param array $stats Statistics array (passed by reference)
+     * @return void
+     */
+    private function set_featured_image_from_existing_attachments($post_id, $mls_number, &$stats) {
+        // Get all attachments for this post ordered by image number
+        $attachments = get_posts(array(
+            'post_type' => 'attachment',
+            'post_parent' => $post_id,
+            'meta_key' => '_treb_image_number',
+            'orderby' => 'meta_value_num',
+            'order' => 'ASC',
+            'posts_per_page' => -1
+        ));
+
+        if (empty($attachments)) {
+            return;
+        }
+
+        // Find the first image (image_number = 1) for featured image priority
+        $first_image_id = null;
+        $preferred_image_id = null;
+        $first_successful_image = null;
+
+        foreach ($attachments as $attachment) {
+            $image_number = get_post_meta($attachment->ID, '_treb_image_number', true);
+            $is_preferred = get_post_meta($attachment->ID, '_treb_is_preferred', true);
+
+            if (!$first_successful_image) {
+                $first_successful_image = $attachment->ID;
+            }
+
+            if ($image_number == 1) {
+                $first_image_id = $attachment->ID;
+            }
+
+            if ($is_preferred) {
+                $preferred_image_id = $attachment->ID;
+            }
+        }
+
+        // Set featured image with priority: First image > Preferred > First successful
+        $featured_image_id = $first_image_id ?: ($preferred_image_id ?: $first_successful_image);
+
+        if ($featured_image_id) {
+            set_post_thumbnail($post_id, $featured_image_id);
+            $stats['featured_set'] = true;
+
+            $priority_type = $first_image_id ? 'first_image' : ($preferred_image_id ? 'preferred' : 'first_successful');
+
+            if (defined('WP_CLI') && WP_CLI) {
+                WP_CLI::line("    🖼️  Set featured image from existing: ID {$featured_image_id} ({$priority_type})");
+            }
+
+            shift8_treb_log('Set featured image from existing attachments', array(
+                'mls_number' => esc_html($mls_number),
+                'attachment_id' => $featured_image_id,
+                'priority_type' => $priority_type
+            ));
+        }
     }
 
     /**
