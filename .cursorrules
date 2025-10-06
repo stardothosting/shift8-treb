@@ -242,7 +242,17 @@
             "✓ Verify consistent bearer token handling across all components",
             "✓ Ensure all tests pass with zero tolerance for failures (composer test)",
             "✓ Verify no wrapper functions that just call other functions exist",
-            "✓ Check for scattered authentication/encryption logic that should be centralized"
+            "✓ Check for scattered authentication/encryption logic that should be centralized",
+            "✓ Verify update and create paths have identical processing logic (especially image processing)",
+            "✓ Check for orphaned attachments and implement auto-correction logic",
+            "✓ Ensure batch processing validates actual processing vs skipping items",
+            "✓ Verify all sync methods (CLI, Cron, Web) use shared service classes",
+            "✓ Test comprehensive meta field storage (70+ fields) with proper sanitization",
+            "✓ Validate attachment post_parent relationships are correct",
+            "✓ Ensure silent failures have comprehensive debugging output",
+            "✓ Verify featured image priority logic works correctly",
+            "✓ Test existing attachment detection and orphaned attachment correction",
+            "✓ Confirm HTTP request debugging provides actionable error information"
         ]
     },
     "emergencyFixes": {
@@ -257,7 +267,12 @@
             "removeWrapperFunctions": "Find and remove simple wrapper functions that just call other functions",
             "consolidateDuplicateSettings": "Identify duplicate settings registration and consolidate",
             "removeDeadCode": "Use grep to find unused functions and remove them systematically",
-            "centralizeTokenHandling": "Move scattered bearer token logic into centralized service"
+            "centralizeTokenHandling": "Move scattered bearer token logic into centralized service",
+            "fixUpdatePathProcessing": "Ensure update_listing_post() calls same processing methods as create_listing_post()",
+            "addOrphanedAttachmentCorrection": "Add post_parent validation and auto-correction in batch processing",
+            "addBatchProcessingDebugging": "Add comprehensive CLI output and logging for batch operations",
+            "validateSyncConsistency": "Verify all sync entry points use shared Sync_Service class",
+            "addMetaFieldStorage": "Implement comprehensive meta field storage with proper sanitization"
         }
     },
     "developmentBestPractices": {
@@ -1028,6 +1043,180 @@
             "technicalChangelog": "Include implementation details, bug fixes, performance improvements",
             "userChangelog": "Focus on user-visible features, benefits, and upgrade notices",
             "versionConsistency": "Ensure version numbers match across all files and headers"
+        }
+    },
+    "criticalBugPatterns": {
+        "description": "Critical bug patterns learned from image processing failures and their systematic resolution",
+        "missingProcessingInUpdatePath": {
+            "rule": "ALWAYS ensure update and create paths have identical processing logic",
+            "issue": "Update path missing critical processing steps that exist in create path",
+            "detection": "Compare create_listing_post() and update_listing_post() methods for consistency",
+            "solution": "Extract shared processing logic or ensure both paths call identical methods",
+            "example": "Image processing was missing from update path, causing no images for existing posts",
+            "prevention": "Use shared service methods for complex operations instead of duplicating logic"
+        },
+        "orphanedAttachmentHandling": {
+            "rule": "Implement automatic detection and correction of orphaned WordPress attachments",
+            "issue": "Attachments created with post_parent=0 instead of correct post ID",
+            "detection": "Check attachment->post_parent matches expected post ID during processing",
+            "autoCorrection": "Automatically fix orphaned attachments instead of skipping them",
+            "logging": "Log all post_parent corrections for debugging and monitoring",
+            "prevention": "Always verify post_parent immediately after wp_insert_attachment()"
+        },
+        "silentFailureDebugging": {
+            "rule": "Add comprehensive debugging output for complex operations that can fail silently",
+            "implementation": "Add detailed CLI output for each step of batch operations",
+            "httpDebugging": "Log individual HTTP request/response status codes and errors",
+            "progressTracking": "Show progress for each item in batch operations",
+            "errorVisibility": "Make silent failures visible through detailed logging and CLI output"
+        },
+        "batchProcessingValidation": {
+            "rule": "Validate that batch processing actually processes items instead of skipping them",
+            "commonIssue": "Batch processing reports success but skips all items due to false positive checks",
+            "validation": "Verify that batch_requests array is not empty before claiming success",
+            "logging": "Log when items are skipped vs actually processed",
+            "testing": "Test batch processing with known data to verify actual processing occurs"
+        }
+    },
+    "wordpressMetaFieldBestPractices": {
+        "description": "Best practices for WordPress custom meta field storage and management",
+        "comprehensiveMetaStorage": {
+            "rule": "Store comprehensive listing data as individual meta fields for extensibility",
+            "implementation": "70+ meta fields with plugin-unique prefix (shift8_treb_)",
+            "benefits": "Enables third-party integrations, custom queries, and future feature development",
+            "keyNaming": "Use descriptive, consistent naming: shift8_treb_{category}_{field_name}",
+            "typeSpecificSanitization": "Apply appropriate sanitization based on data type (text, int, float, boolean, datetime, url, textarea)"
+        },
+        "metaFieldCategories": {
+            "rule": "Organize meta fields into logical categories for maintainability",
+            "categories": {
+                "identifiers": "ListingKey, ListAgentKey, ListingId",
+                "location": "Address components, coordinates, postal codes",
+                "financial": "Prices, taxes, fees, financial calculations",
+                "physical": "Dimensions, room counts, property features",
+                "temporal": "Dates, timestamps, age calculations",
+                "media": "Image counts, virtual tour URLs",
+                "calculated": "Price per sqft, days on market, derived values"
+            }
+        },
+        "conditionalStorage": {
+            "rule": "Only store non-empty values to keep database clean",
+            "implementation": "Check for empty/null values before calling update_post_meta()",
+            "benefits": "Reduces database bloat and improves query performance",
+            "exception": "Store zero values for numeric fields where zero is meaningful"
+        },
+        "metaFieldTesting": {
+            "rule": "Add comprehensive tests for meta field storage and retrieval",
+            "coverage": "Test all data types, edge cases, and sanitization functions",
+            "validation": "Verify correct meta keys are stored with expected values",
+            "edgeCases": "Test empty data, malformed input, and boundary conditions"
+        }
+    },
+    "syncConsistencyPatterns": {
+        "description": "Patterns ensuring all sync methods (CLI, Cron, Web) use identical code paths",
+        "sharedServiceArchitecture": {
+            "rule": "ALL sync methods must use the same underlying service class",
+            "implementation": "CLI, Cron, and Web sync all use Shift8_TREB_Sync_Service",
+            "verification": "Trace all sync entry points to confirm they call execute_sync()",
+            "benefits": "Ensures identical behavior, easier testing, single point of maintenance"
+        },
+        "configurationDifferences": {
+            "rule": "Document and minimize configuration differences between sync methods",
+            "allowedDifferences": "CLI can override settings, Cron uses saved settings, Web uses saved settings",
+            "consistency": "Core processing logic must be identical regardless of entry point",
+            "testing": "Test all sync methods to ensure they produce identical results with same settings"
+        },
+        "syncMethodValidation": {
+            "rule": "Regularly verify all sync methods use shared code paths",
+            "process": [
+                "Trace CLI sync: wp shift8-treb sync → Sync_Service::execute_sync()",
+                "Trace Cron sync: shift8_treb_sync_listings → sync_listings_cron() → Sync_Service::execute_sync()",
+                "Trace Web sync: ajax_manual_sync() → sync_listings_cron() → Sync_Service::execute_sync()"
+            ],
+            "redFlag": "If any sync method bypasses the shared service, refactor immediately"
+        }
+    },
+    "imageProcessingBestPractices": {
+        "description": "Critical patterns for WordPress media library integration and image processing",
+        "batchProcessingDefaults": {
+            "rule": "Make batch processing the default for better performance and user experience",
+            "implementation": "Default batch_image_processing to true, provide sequential fallback",
+            "adaptiveSettings": "Automatically adjust batch size, timeouts, and delays based on hosting environment",
+            "userControl": "Provide CLI flags and settings to override batch behavior when needed"
+        },
+        "attachmentLinkingValidation": {
+            "rule": "Always validate and correct attachment post_parent relationships",
+            "implementation": "Check attachment->post_parent immediately after creation",
+            "autoCorrection": "Automatically fix mismatched post_parent values",
+            "logging": "Log all post_parent corrections for monitoring",
+            "prevention": "Use wp_insert_attachment() with correct post_parent parameter"
+        },
+        "existingAttachmentHandling": {
+            "rule": "Handle existing attachments intelligently instead of skipping processing",
+            "detection": "Check for existing attachments by MLS number and image number",
+            "orphanedCorrection": "Fix orphaned attachments (post_parent=0) instead of skipping",
+            "duplicatePrevention": "Avoid downloading duplicates while ensuring proper linking",
+            "logging": "Log attachment reuse, corrections, and skipped downloads"
+        },
+        "httpRequestDebugging": {
+            "rule": "Provide detailed debugging for HTTP requests in batch processing",
+            "implementation": "Log each HTTP request URL, response code, and error messages",
+            "cliOutput": "Show progress for each image download with status indicators",
+            "errorHandling": "Distinguish between network errors, HTTP errors, and processing errors",
+            "troubleshooting": "Enable users to identify specific images or URLs causing issues"
+        }
+    },
+    "debuggingMethodology": {
+        "description": "Systematic debugging approaches for complex WordPress plugin issues",
+        "logAnalysisPatterns": {
+            "rule": "Use log analysis to identify gaps in expected vs actual processing",
+            "technique": "Compare CLI output with log entries to find missing processing steps",
+            "example": "CLI shows 'Starting batch download' but logs show 'No images to download' indicates logic error",
+            "tools": "Use tail, grep, and timestamp analysis to trace execution flow"
+        },
+        "attachmentDebugging": {
+            "rule": "Use wp-cli to investigate attachment and post relationships",
+            "commands": [
+                "wp post list --post_type=attachment --post_parent=ID --fields=ID,post_title,post_parent",
+                "wp post list --post_type=attachment --meta_key=_treb_mls_number --meta_value=MLS",
+                "wp post get ID --field=post_content | head -20"
+            ],
+            "analysis": "Look for orphaned attachments, missing relationships, and content issues"
+        },
+        "progressiveDebugging": {
+            "rule": "Add debugging output progressively to isolate issues",
+            "approach": "Start with high-level progress, add detailed output for failing operations",
+            "implementation": "Use WP_CLI::line() for immediate feedback, logs for detailed analysis",
+            "cleanup": "Remove excessive debugging output once issues are resolved"
+        }
+    },
+    "wordpressMediaLibraryIntegration": {
+        "description": "Best practices for WordPress media library integration in plugins",
+        "attachmentCreationBestPractices": {
+            "rule": "Follow WordPress standards for programmatic attachment creation",
+            "process": [
+                "1. Download image with wp_remote_get()",
+                "2. Save to uploads directory with wp_upload_bits()",
+                "3. Create attachment with wp_insert_attachment() including post_parent",
+                "4. Generate metadata with wp_generate_attachment_metadata()",
+                "5. Update metadata with wp_update_attachment_metadata()",
+                "6. Verify post_parent relationship and correct if needed"
+            ],
+            "errorHandling": "Clean up uploaded files if attachment creation fails",
+            "metadata": "Always generate thumbnails and attachment metadata for proper WordPress integration"
+        },
+        "featuredImageManagement": {
+            "rule": "Implement intelligent featured image selection with priority logic",
+            "priority": "1. First image (image_number=1), 2. Preferred image, 3. First successful download",
+            "implementation": "Track image priorities during batch processing",
+            "validation": "Verify featured image is set using get_post_thumbnail_id()",
+            "fallback": "Provide fallback logic if preferred images fail to download"
+        },
+        "mediaQueryOptimization": {
+            "rule": "Optimize media queries for performance",
+            "existingChecks": "Use efficient meta_query to check for existing attachments",
+            "bulkOperations": "Process multiple attachments in batches to reduce database queries",
+            "indexing": "Ensure custom meta fields used in queries are properly indexed"
         }
     }
 }
