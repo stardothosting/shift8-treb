@@ -93,9 +93,16 @@ class Shift8_TREB_Post_Manager {
                 // Update comprehensive listing data as custom meta fields
                 $this->store_listing_meta_fields($post_id, $listing);
                 
+                // Process listing images (same as create path)
+                $image_stats = $this->process_listing_images($post_id, $listing);
+
+                // Update post content with actual image HTML after processing
+                $this->update_post_content_with_images($post_id);
+                
                 shift8_treb_log('Listing updated successfully', array(
                     'post_id' => $post_id,
-                    'mls_number' => esc_html($mls_number)
+                    'mls_number' => esc_html($mls_number),
+                    'image_stats' => $image_stats
                 ));
                 
                 return array(
@@ -1261,9 +1268,27 @@ class Shift8_TREB_Post_Manager {
                 $preferred_index = $index;
             }
 
-            // Check if already exists
+            // Check if already exists and fix orphaned attachments
             $existing_attachment = $this->get_existing_attachment($mls_number, $index + 1);
             if ($existing_attachment) {
+                // Check if attachment is properly linked to post
+                $attachment_post = get_post($existing_attachment);
+                if ($attachment_post && $attachment_post->post_parent != $post_id) {
+                    // Fix orphaned attachment
+                    wp_update_post(array(
+                        'ID' => $existing_attachment,
+                        'post_parent' => $post_id
+                    ));
+                    
+                    shift8_treb_log('Fixed orphaned attachment', array(
+                        'attachment_id' => $existing_attachment,
+                        'mls_number' => esc_html($mls_number),
+                        'image_number' => $index + 1,
+                        'old_parent' => $attachment_post->post_parent,
+                        'new_parent' => $post_id
+                    ));
+                }
+                
                 $stats['downloaded']++;
                 continue;
             }
@@ -1431,7 +1456,20 @@ class Shift8_TREB_Post_Manager {
                 // Override timeout in request settings for cross-hosting compatibility
                 $request_data['request']['timeout'] = $timeout;
                 
+                if (defined('WP_CLI') && WP_CLI) {
+                    WP_CLI::line("      Downloading image " . $request_data['image_number'] . "...");
+                }
+                
                 $response = wp_remote_get($request_data['url'], $request_data['request']);
+                
+                if (defined('WP_CLI') && WP_CLI) {
+                    if (is_wp_error($response)) {
+                        WP_CLI::line("      ❌ Image " . $request_data['image_number'] . ": " . $response->get_error_message());
+                    } else {
+                        $code = wp_remote_retrieve_response_code($response);
+                        WP_CLI::line("      📥 Image " . $request_data['image_number'] . ": HTTP {$code}");
+                    }
+                }
                 
                 $responses[] = array(
                     'url' => $request_data['url'],
