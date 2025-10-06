@@ -2129,11 +2129,17 @@ var ws_height = '300';
             return '<div class="treb-no-image">No image available</div>';
         }
 
+        // Get post object to ensure proper context
+        $post = get_post($post_id);
+        if (!$post) {
+            return '<div class="treb-no-image">Post not found</div>';
+        }
+
         // Get featured image with responsive sizes
         $featured_image = get_the_post_thumbnail($post_id, 'large', array(
             'class' => 'treb-featured-image',
             'loading' => 'lazy',
-            'alt' => get_the_title($post_id) . ' - Property Photo'
+            'alt' => esc_attr($post->post_title) . ' - Property Photo'
         ));
 
         return $featured_image;
@@ -2147,6 +2153,12 @@ var ws_height = '300';
      * @return string Gallery HTML or empty string
      */
     private function get_image_gallery_html($post_id) {
+        // Verify post exists
+        $post = get_post($post_id);
+        if (!$post) {
+            return '<p class="treb-no-gallery">Post not found</p>';
+        }
+
         // Get all attachments for this post
         $attachments = get_posts(array(
             'post_type' => 'attachment',
@@ -2177,7 +2189,7 @@ var ws_height = '300';
 
         // Create WordPress gallery shortcode
         $gallery_ids = implode(',', $gallery_images);
-        $gallery_shortcode = '[gallery ids="' . $gallery_ids . '" columns="3" size="medium" link="file"]';
+        $gallery_shortcode = '[gallery ids="' . esc_attr($gallery_ids) . '" columns="3" size="medium" link="file"]';
         
         // Process the shortcode to generate HTML
         $gallery_html = do_shortcode($gallery_shortcode);
@@ -2193,6 +2205,12 @@ var ws_height = '300';
      * @return array Array of image URLs
      */
     private function get_listing_image_urls($post_id) {
+        // Verify post exists
+        $post = get_post($post_id);
+        if (!$post) {
+            return array();
+        }
+
         // Get all attachments for this post ordered by image number
         $attachments = get_posts(array(
             'post_type' => 'attachment',
