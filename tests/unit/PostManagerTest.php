@@ -44,6 +44,9 @@ class PostManagerTest extends TestCase {
         Functions\when('sanitize_text_field')->alias(function($str) { 
             return htmlspecialchars(strip_tags($str)); 
         });
+        Functions\when('sanitize_textarea_field')->alias(function($str) { 
+            return trim(str_replace("\n", ' ', strip_tags($str))); 
+        });
         Functions\when('sanitize_title')->alias(function($str) { 
             return strtolower(str_replace(' ', '-', $str)); 
         });
@@ -713,5 +716,275 @@ class PostManagerTest extends TestCase {
         $this->assertEquals('gif', $method->invoke($this->post_manager, 'image/gif'));
         $this->assertEquals('webp', $method->invoke($this->post_manager, 'image/webp'));
         $this->assertEquals('jpg', $method->invoke($this->post_manager, 'unknown/type')); // Default
+    }
+
+    /**
+     * Test meta value sanitization
+     */
+    public function test_sanitize_meta_value() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('sanitize_meta_value');
+        $method->setAccessible(true);
+
+        // Test text sanitization
+        $this->assertEquals('Test Value', $method->invoke($this->post_manager, 'Test Value', 'text'));
+        $this->assertEquals('', $method->invoke($this->post_manager, '', 'text'));
+        $this->assertEquals('', $method->invoke($this->post_manager, null, 'text'));
+
+        // Test integer sanitization
+        $this->assertEquals(123, $method->invoke($this->post_manager, '123', 'int'));
+        $this->assertEquals(0, $method->invoke($this->post_manager, 'abc', 'int'));
+        $this->assertEquals(456, $method->invoke($this->post_manager, 456.78, 'int'));
+
+        // Test float sanitization
+        $this->assertEquals(123.45, $method->invoke($this->post_manager, '123.45', 'float'));
+        $this->assertEquals(0.0, $method->invoke($this->post_manager, 'abc', 'float'));
+
+        // Test boolean sanitization
+        $this->assertEquals('1', $method->invoke($this->post_manager, true, 'boolean'));
+        $this->assertEquals('0', $method->invoke($this->post_manager, false, 'boolean'));
+        $this->assertEquals('1', $method->invoke($this->post_manager, 'true', 'boolean'));
+        $this->assertEquals('1', $method->invoke($this->post_manager, 'YES', 'boolean'));
+        $this->assertEquals('0', $method->invoke($this->post_manager, 'false', 'boolean'));
+        $this->assertEquals('0', $method->invoke($this->post_manager, 'no', 'boolean'));
+
+        // Test datetime sanitization
+        $result = $method->invoke($this->post_manager, '2023-12-01T10:30:00Z', 'datetime');
+        $this->assertMatchesRegularExpression('/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/', $result);
+        $this->assertEquals('', $method->invoke($this->post_manager, 'invalid-date', 'datetime'));
+
+        // Test URL sanitization (mocked)
+        Functions\when('esc_url_raw')->alias(function($url) { return $url; });
+        $this->assertEquals('http://example.com', $method->invoke($this->post_manager, 'http://example.com', 'url'));
+
+        // Test textarea sanitization (already mocked in setUp)
+        $this->assertEquals('Multi line text', $method->invoke($this->post_manager, "Multi line\ntext", 'textarea'));
+    }
+
+    /**
+     * Test price per square foot calculation
+     */
+    public function test_calculate_price_per_sqft() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('calculate_price_per_sqft');
+        $method->setAccessible(true);
+
+        // Test valid calculation
+        $listing = array(
+            'ListPrice' => 500000,
+            'LivingArea' => 2000
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals(250.0, $result);
+
+        // Test missing price
+        $listing = array('LivingArea' => 2000);
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals(0, $result);
+
+        // Test missing area
+        $listing = array('ListPrice' => 500000);
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals(0, $result);
+
+        // Test zero values
+        $listing = array('ListPrice' => 0, 'LivingArea' => 2000);
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals(0, $result);
+    }
+
+    /**
+     * Test days on market calculation
+     */
+    public function test_calculate_days_on_market() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('calculate_days_on_market');
+        $method->setAccessible(true);
+
+        // Test with OnMarketDate
+        $listing = array(
+            'OnMarketDate' => gmdate('Y-m-d\TH:i:s\Z', strtotime('-30 days'))
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertGreaterThanOrEqual(29, $result);
+        $this->assertLessThanOrEqual(31, $result);
+
+        // Test with ListingContractDate fallback
+        $listing = array(
+            'ListingContractDate' => gmdate('Y-m-d\TH:i:s\Z', strtotime('-15 days'))
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertGreaterThanOrEqual(14, $result);
+        $this->assertLessThanOrEqual(16, $result);
+
+        // Test with no date
+        $listing = array();
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals(0, $result);
+
+        // Test with invalid date
+        $listing = array('OnMarketDate' => 'invalid-date');
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals(0, $result);
+    }
+
+    /**
+     * Test comprehensive meta field storage
+     */
+    public function test_store_listing_meta_fields() {
+        // Mock update_post_meta function to capture calls
+        $meta_calls = array();
+        Functions\when('update_post_meta')->alias(function($post_id, $key, $value) use (&$meta_calls) {
+            $meta_calls[] = array('post_id' => $post_id, 'key' => $key, 'value' => $value);
+            return true;
+        });
+
+        // Mock current_time
+        Functions\when('current_time')->justReturn('2023-12-01 10:30:00');
+
+        // Mock shift8_treb_log
+        Functions\when('shift8_treb_log')->justReturn(true);
+
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('store_listing_meta_fields');
+        $method->setAccessible(true);
+
+        // Sample listing data
+        $listing = array(
+            'ListingKey' => 'W12345678',
+            'ListAgentKey' => '123456',
+            'UnparsedAddress' => '123 Main St Unit 4B',
+            'City' => 'Toronto',
+            'StateOrProvince' => 'ON',
+            'PostalCode' => 'M5V 3A8',
+            'ListPrice' => 750000,
+            'BedroomsTotal' => 2,
+            'BathroomsTotal' => 2.5,
+            'LivingArea' => 1200,
+            'PropertyType' => 'Condominium',
+            'PublicRemarks' => 'Beautiful condo in downtown Toronto',
+            'PoolPrivateYN' => 'true',
+            'WaterfrontYN' => 'false',
+            'OnMarketDate' => '2023-11-01T00:00:00Z'
+        );
+
+        $post_id = 123;
+        $method->invoke($this->post_manager, $post_id, $listing);
+
+        // Verify meta fields were stored
+        $this->assertNotEmpty($meta_calls);
+
+        // Check specific meta fields
+        $meta_keys = array_column($meta_calls, 'key');
+        
+        // Core identifiers
+        $this->assertContains('shift8_treb_listing_key', $meta_keys);
+        $this->assertContains('shift8_treb_mls_number', $meta_keys);
+        $this->assertContains('shift8_treb_list_agent_key', $meta_keys);
+        
+        // Address fields
+        $this->assertContains('shift8_treb_unparsed_address', $meta_keys);
+        $this->assertContains('shift8_treb_city', $meta_keys);
+        $this->assertContains('shift8_treb_state_province', $meta_keys);
+        $this->assertContains('shift8_treb_postal_code', $meta_keys);
+        
+        // Property characteristics
+        $this->assertContains('shift8_treb_list_price', $meta_keys);
+        $this->assertContains('shift8_treb_bedrooms_total', $meta_keys);
+        $this->assertContains('shift8_treb_bathrooms_total', $meta_keys);
+        $this->assertContains('shift8_treb_living_area', $meta_keys);
+        $this->assertContains('shift8_treb_property_type', $meta_keys);
+        
+        // Boolean fields
+        $this->assertContains('shift8_treb_pool_private_yn', $meta_keys);
+        $this->assertContains('shift8_treb_waterfront_yn', $meta_keys);
+        
+        // Parsed address components
+        $this->assertContains('shift8_treb_parsed_street_number', $meta_keys);
+        $this->assertContains('shift8_treb_parsed_street_name', $meta_keys);
+        $this->assertContains('shift8_treb_parsed_unit', $meta_keys);
+        
+        // Calculated fields
+        $this->assertContains('shift8_treb_price_per_sqft', $meta_keys);
+        $this->assertContains('shift8_treb_days_on_market', $meta_keys);
+        $this->assertContains('shift8_treb_import_date', $meta_keys);
+        $this->assertContains('shift8_treb_last_updated', $meta_keys);
+
+        // Verify specific values
+        foreach ($meta_calls as $call) {
+            $this->assertEquals($post_id, $call['post_id']);
+            
+            switch ($call['key']) {
+                case 'shift8_treb_listing_key':
+                case 'shift8_treb_mls_number':
+                    $this->assertEquals('W12345678', $call['value']);
+                    break;
+                case 'shift8_treb_list_price':
+                    $this->assertEquals(750000, $call['value']);
+                    break;
+                case 'shift8_treb_bedrooms_total':
+                    $this->assertEquals(2, $call['value']);
+                    break;
+                case 'shift8_treb_bathrooms_total':
+                    $this->assertEquals(2.5, $call['value']);
+                    break;
+                case 'shift8_treb_pool_private_yn':
+                    $this->assertEquals('1', $call['value']);
+                    break;
+                case 'shift8_treb_waterfront_yn':
+                    $this->assertEquals('0', $call['value']);
+                    break;
+                case 'shift8_treb_price_per_sqft':
+                    $this->assertEquals(625.0, $call['value']); // 750000 / 1200
+                    break;
+            }
+        }
+    }
+
+    /**
+     * Test meta storage with empty/missing fields
+     */
+    public function test_store_listing_meta_fields_with_empty_data() {
+        // Mock update_post_meta function to capture calls
+        $meta_calls = array();
+        Functions\when('update_post_meta')->alias(function($post_id, $key, $value) use (&$meta_calls) {
+            $meta_calls[] = array('post_id' => $post_id, 'key' => $key, 'value' => $value);
+            return true;
+        });
+
+        Functions\when('current_time')->justReturn('2023-12-01 10:30:00');
+        Functions\when('shift8_treb_log')->justReturn(true);
+
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('store_listing_meta_fields');
+        $method->setAccessible(true);
+
+        // Minimal listing data
+        $listing = array(
+            'ListingKey' => 'W12345678',
+            'UnparsedAddress' => '123 Main St',
+            'ListPrice' => 500000,
+            // Missing many optional fields
+        );
+
+        $post_id = 456;
+        $method->invoke($this->post_manager, $post_id, $listing);
+
+        // Verify only non-empty fields were stored
+        $stored_keys = array_column($meta_calls, 'key');
+        
+        // Should have core fields
+        $this->assertContains('shift8_treb_listing_key', $stored_keys);
+        $this->assertContains('shift8_treb_unparsed_address', $stored_keys);
+        $this->assertContains('shift8_treb_list_price', $stored_keys);
+        
+        // Should have calculated/derived fields even if source data is minimal
+        $this->assertContains('shift8_treb_parsed_street_number', $stored_keys);
+        $this->assertContains('shift8_treb_parsed_street_name', $stored_keys);
+        $this->assertContains('shift8_treb_import_date', $stored_keys);
+        
+        // Should NOT have fields that weren't provided
+        $this->assertNotContains('shift8_treb_city', $stored_keys);
+        $this->assertNotContains('shift8_treb_bedrooms_total', $stored_keys);
     }
 }

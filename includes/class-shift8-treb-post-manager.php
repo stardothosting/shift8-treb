@@ -90,6 +90,9 @@ class Shift8_TREB_Post_Manager {
                 // Update MLS number meta
                 update_post_meta($post_id, 'listing_mls_number', sanitize_text_field($listing['ListingKey']));
                 
+                // Update comprehensive listing data as custom meta fields
+                $this->store_listing_meta_fields($post_id, $listing);
+                
                 shift8_treb_log('Listing updated successfully', array(
                     'post_id' => $post_id,
                     'mls_number' => esc_html($mls_number)
@@ -114,6 +117,9 @@ class Shift8_TREB_Post_Manager {
 
             // Store MLS number as meta for duplicate detection
             update_post_meta($post_id, 'listing_mls_number', sanitize_text_field($listing['ListingKey']));
+            
+            // Store comprehensive listing data as custom meta fields
+            $this->store_listing_meta_fields($post_id, $listing);
 
             // Process listing images
             $image_stats = $this->process_listing_images($post_id, $listing);
@@ -455,6 +461,250 @@ class Shift8_TREB_Post_Manager {
             esc_html($price),
             esc_html($mls)
         );
+    }
+
+    /**
+     * Store comprehensive listing data as WordPress custom meta fields
+     * 
+     * Following WordPress best practices:
+     * - Plugin-unique meta key prefix: 'shift8_treb_'
+     * - Sanitized values appropriate to data type
+     * - Comprehensive field mapping for extensibility
+     *
+     * @since 1.2.0
+     * @param int $post_id WordPress post ID
+     * @param array $listing Raw listing data from AMPRE API
+     * @return void
+     */
+    private function store_listing_meta_fields($post_id, $listing) {
+        // Define meta field mappings with sanitization
+        $meta_fields = array(
+            // Core listing identifiers
+            'shift8_treb_listing_key' => array('field' => 'ListingKey', 'sanitize' => 'text'),
+            'shift8_treb_mls_number' => array('field' => 'ListingKey', 'sanitize' => 'text'), // Alias for compatibility
+            'shift8_treb_list_agent_key' => array('field' => 'ListAgentKey', 'sanitize' => 'text'),
+            'shift8_treb_listing_id' => array('field' => 'ListingId', 'sanitize' => 'text'),
+            
+            // Address and location data
+            'shift8_treb_unparsed_address' => array('field' => 'UnparsedAddress', 'sanitize' => 'text'),
+            'shift8_treb_street_number' => array('field' => 'StreetNumber', 'sanitize' => 'text'),
+            'shift8_treb_street_name' => array('field' => 'StreetName', 'sanitize' => 'text'),
+            'shift8_treb_unit_number' => array('field' => 'UnitNumber', 'sanitize' => 'text'),
+            'shift8_treb_city' => array('field' => 'City', 'sanitize' => 'text'),
+            'shift8_treb_state_province' => array('field' => 'StateOrProvince', 'sanitize' => 'text'),
+            'shift8_treb_postal_code' => array('field' => 'PostalCode', 'sanitize' => 'text'),
+            'shift8_treb_country' => array('field' => 'Country', 'sanitize' => 'text'),
+            
+            // Geographic coordinates
+            'shift8_treb_latitude' => array('field' => 'Latitude', 'sanitize' => 'float'),
+            'shift8_treb_longitude' => array('field' => 'Longitude', 'sanitize' => 'float'),
+            
+            // Pricing information
+            'shift8_treb_list_price' => array('field' => 'ListPrice', 'sanitize' => 'int'),
+            'shift8_treb_original_list_price' => array('field' => 'OriginalListPrice', 'sanitize' => 'int'),
+            'shift8_treb_close_price' => array('field' => 'ClosePrice', 'sanitize' => 'int'),
+            
+            // Property characteristics
+            'shift8_treb_property_type' => array('field' => 'PropertyType', 'sanitize' => 'text'),
+            'shift8_treb_property_subtype' => array('field' => 'PropertySubType', 'sanitize' => 'text'),
+            'shift8_treb_bedrooms_total' => array('field' => 'BedroomsTotal', 'sanitize' => 'int'),
+            'shift8_treb_bathrooms_total' => array('field' => 'BathroomsTotal', 'sanitize' => 'float'),
+            'shift8_treb_bathrooms_full' => array('field' => 'BathroomsFull', 'sanitize' => 'int'),
+            'shift8_treb_bathrooms_half' => array('field' => 'BathroomsHalf', 'sanitize' => 'int'),
+            'shift8_treb_living_area' => array('field' => 'LivingArea', 'sanitize' => 'int'),
+            'shift8_treb_lot_size_area' => array('field' => 'LotSizeArea', 'sanitize' => 'float'),
+            'shift8_treb_lot_size_units' => array('field' => 'LotSizeUnits', 'sanitize' => 'text'),
+            'shift8_treb_year_built' => array('field' => 'YearBuilt', 'sanitize' => 'int'),
+            
+            // Status and dates
+            'shift8_treb_standard_status' => array('field' => 'StandardStatus', 'sanitize' => 'text'),
+            'shift8_treb_contract_status' => array('field' => 'ContractStatus', 'sanitize' => 'text'),
+            'shift8_treb_listing_contract_date' => array('field' => 'ListingContractDate', 'sanitize' => 'datetime'),
+            'shift8_treb_modification_timestamp' => array('field' => 'ModificationTimestamp', 'sanitize' => 'datetime'),
+            'shift8_treb_on_market_date' => array('field' => 'OnMarketDate', 'sanitize' => 'datetime'),
+            'shift8_treb_off_market_date' => array('field' => 'OffMarketDate', 'sanitize' => 'datetime'),
+            'shift8_treb_close_date' => array('field' => 'CloseDate', 'sanitize' => 'datetime'),
+            
+            // Descriptive content
+            'shift8_treb_public_remarks' => array('field' => 'PublicRemarks', 'sanitize' => 'textarea'),
+            'shift8_treb_private_remarks' => array('field' => 'PrivateRemarks', 'sanitize' => 'textarea'),
+            'shift8_treb_marketing_remarks' => array('field' => 'MarketingRemarks', 'sanitize' => 'textarea'),
+            
+            // Virtual tour and media
+            'shift8_treb_virtual_tour_url' => array('field' => 'VirtualTourURLUnbranded', 'sanitize' => 'url'),
+            'shift8_treb_virtual_tour_branded' => array('field' => 'VirtualTourURLBranded', 'sanitize' => 'url'),
+            'shift8_treb_photo_count' => array('field' => 'PhotosCount', 'sanitize' => 'int'),
+            
+            // Additional property details
+            'shift8_treb_stories' => array('field' => 'Stories', 'sanitize' => 'int'),
+            'shift8_treb_garage_spaces' => array('field' => 'GarageSpaces', 'sanitize' => 'int'),
+            'shift8_treb_parking_total' => array('field' => 'ParkingTotal', 'sanitize' => 'int'),
+            'shift8_treb_pool_private_yn' => array('field' => 'PoolPrivateYN', 'sanitize' => 'boolean'),
+            'shift8_treb_waterfront_yn' => array('field' => 'WaterfrontYN', 'sanitize' => 'boolean'),
+            
+            // MLS specific fields
+            'shift8_treb_mls_area_major' => array('field' => 'MLSAreaMajor', 'sanitize' => 'text'),
+            'shift8_treb_mls_area_minor' => array('field' => 'MLSAreaMinor', 'sanitize' => 'text'),
+            'shift8_treb_subdivision_name' => array('field' => 'SubdivisionName', 'sanitize' => 'text'),
+            
+            // Agent and office information
+            'shift8_treb_list_agent_full_name' => array('field' => 'ListAgentFullName', 'sanitize' => 'text'),
+            'shift8_treb_list_agent_first_name' => array('field' => 'ListAgentFirstName', 'sanitize' => 'text'),
+            'shift8_treb_list_agent_last_name' => array('field' => 'ListAgentLastName', 'sanitize' => 'text'),
+            'shift8_treb_list_office_key' => array('field' => 'ListOfficeKey', 'sanitize' => 'text'),
+            'shift8_treb_list_office_name' => array('field' => 'ListOfficeName', 'sanitize' => 'text'),
+            
+            // Co-agent information
+            'shift8_treb_co_list_agent_key' => array('field' => 'CoListAgentKey', 'sanitize' => 'text'),
+            'shift8_treb_co_list_agent_full_name' => array('field' => 'CoListAgentFullName', 'sanitize' => 'text'),
+            'shift8_treb_co_list_office_key' => array('field' => 'CoListOfficeKey', 'sanitize' => 'text'),
+            'shift8_treb_co_list_office_name' => array('field' => 'CoListOfficeName', 'sanitize' => 'text'),
+            
+            // Financial details
+            'shift8_treb_tax_annual_amount' => array('field' => 'TaxAnnualAmount', 'sanitize' => 'float'),
+            'shift8_treb_tax_year' => array('field' => 'TaxYear', 'sanitize' => 'int'),
+            'shift8_treb_association_fee' => array('field' => 'AssociationFee', 'sanitize' => 'float'),
+            'shift8_treb_association_fee_frequency' => array('field' => 'AssociationFeeFrequency', 'sanitize' => 'text'),
+            
+            // Utility and features
+            'shift8_treb_heating' => array('field' => 'Heating', 'sanitize' => 'text'),
+            'shift8_treb_cooling' => array('field' => 'Cooling', 'sanitize' => 'text'),
+            'shift8_treb_utilities' => array('field' => 'Utilities', 'sanitize' => 'text'),
+            'shift8_treb_appliances' => array('field' => 'Appliances', 'sanitize' => 'text'),
+            'shift8_treb_architectural_style' => array('field' => 'ArchitecturalStyle', 'sanitize' => 'text'),
+            'shift8_treb_construction_materials' => array('field' => 'ConstructionMaterials', 'sanitize' => 'text'),
+            'shift8_treb_roof' => array('field' => 'Roof', 'sanitize' => 'text'),
+            
+            // School information
+            'shift8_treb_elementary_school' => array('field' => 'ElementarySchool', 'sanitize' => 'text'),
+            'shift8_treb_middle_school' => array('field' => 'MiddleOrJuniorSchool', 'sanitize' => 'text'),
+            'shift8_treb_high_school' => array('field' => 'HighSchool', 'sanitize' => 'text'),
+            'shift8_treb_school_district' => array('field' => 'SchoolDistrict', 'sanitize' => 'text'),
+        );
+
+        // Store each field as meta if it exists in the listing data
+        foreach ($meta_fields as $meta_key => $config) {
+            $field_name = $config['field'];
+            $sanitize_type = $config['sanitize'];
+            
+            if (isset($listing[$field_name])) {
+                $value = $listing[$field_name];
+                
+                // Sanitize based on data type
+                $sanitized_value = $this->sanitize_meta_value($value, $sanitize_type);
+                
+                // Only store non-empty values
+                if ($sanitized_value !== '' && $sanitized_value !== null) {
+                    update_post_meta($post_id, $meta_key, $sanitized_value);
+                }
+            }
+        }
+        
+        // Store parsed address components as separate meta fields
+        $address_parts = $this->parse_address($listing['UnparsedAddress']);
+        update_post_meta($post_id, 'shift8_treb_parsed_street_number', sanitize_text_field($address_parts['number']));
+        update_post_meta($post_id, 'shift8_treb_parsed_street_name', sanitize_text_field($address_parts['street']));
+        update_post_meta($post_id, 'shift8_treb_parsed_unit', sanitize_text_field($address_parts['unit']));
+        
+        // Store calculated/derived fields
+        update_post_meta($post_id, 'shift8_treb_price_per_sqft', $this->calculate_price_per_sqft($listing));
+        update_post_meta($post_id, 'shift8_treb_days_on_market', $this->calculate_days_on_market($listing));
+        update_post_meta($post_id, 'shift8_treb_import_date', current_time('mysql'));
+        update_post_meta($post_id, 'shift8_treb_last_updated', current_time('mysql'));
+        
+        shift8_treb_log('Stored listing meta fields', array(
+            'post_id' => $post_id,
+            'mls_number' => esc_html($listing['ListingKey'] ?? 'unknown'),
+            'meta_fields_stored' => count($meta_fields)
+        ));
+    }
+
+    /**
+     * Sanitize meta value based on data type
+     *
+     * @since 1.2.0
+     * @param mixed $value Raw value from API
+     * @param string $type Sanitization type
+     * @return mixed Sanitized value
+     */
+    private function sanitize_meta_value($value, $type) {
+        if ($value === null || $value === '') {
+            return '';
+        }
+        
+        switch ($type) {
+            case 'text':
+                return sanitize_text_field($value);
+                
+            case 'textarea':
+                return sanitize_textarea_field($value);
+                
+            case 'url':
+                return esc_url_raw($value);
+                
+            case 'int':
+                return intval($value);
+                
+            case 'float':
+                return floatval($value);
+                
+            case 'boolean':
+                // Handle various boolean representations from API
+                if (is_bool($value)) {
+                    return $value ? '1' : '0';
+                }
+                $value = strtolower(trim($value));
+                return in_array($value, array('true', '1', 'yes', 'y'), true) ? '1' : '0';
+                
+            case 'datetime':
+                // Ensure datetime is in MySQL format
+                $timestamp = strtotime($value);
+                return $timestamp ? gmdate('Y-m-d H:i:s', $timestamp) : '';
+                
+            default:
+                return sanitize_text_field($value);
+        }
+    }
+
+    /**
+     * Calculate price per square foot
+     *
+     * @since 1.2.0
+     * @param array $listing Listing data
+     * @return float Price per square foot or 0 if cannot calculate
+     */
+    private function calculate_price_per_sqft($listing) {
+        $price = isset($listing['ListPrice']) ? floatval($listing['ListPrice']) : 0;
+        $sqft = isset($listing['LivingArea']) ? floatval($listing['LivingArea']) : 0;
+        
+        if ($price > 0 && $sqft > 0) {
+            return round($price / $sqft, 2);
+        }
+        
+        return 0;
+    }
+
+    /**
+     * Calculate days on market
+     *
+     * @since 1.2.0
+     * @param array $listing Listing data
+     * @return int Days on market or 0 if cannot calculate
+     */
+    private function calculate_days_on_market($listing) {
+        $on_market_date = isset($listing['OnMarketDate']) ? $listing['OnMarketDate'] : 
+                         (isset($listing['ListingContractDate']) ? $listing['ListingContractDate'] : '');
+        
+        if (empty($on_market_date)) {
+            return 0;
+        }
+        
+        $market_timestamp = strtotime($on_market_date);
+        if (!$market_timestamp) {
+            return 0;
+        }
+        
+        return max(0, floor((time() - $market_timestamp) / (24 * 60 * 60)));
     }
 
     /**
