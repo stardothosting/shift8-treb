@@ -895,8 +895,8 @@ function shift8_treb_has_listing_coordinates($listing, $post_id = null) {
         }
     }
     
-    // Check if we have an address for geocoding and Google Maps API key
-    if (!empty($listing['UnparsedAddress']) && shift8_treb_has_google_maps_api_key()) {
+    // Check if we have an address for geocoding (OpenStreetMap doesn't require API key)
+    if (!empty($listing['UnparsedAddress'])) {
         return true;
     }
     

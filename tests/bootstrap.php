@@ -273,6 +273,10 @@ Functions\when('wp_update_post')->justReturn(123);
 Functions\when('get_posts')->justReturn(array());
 Functions\when('wp_delete_file')->justReturn(true);
 
+// Mock WordPress transient functions
+Functions\when('get_transient')->justReturn(false); // Always return false to skip cache
+Functions\when('set_transient')->justReturn(true);
+
 // Mock global filesystem
 global $wp_filesystem;
 $wp_filesystem = new class {

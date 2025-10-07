@@ -697,13 +697,7 @@ class Shift8_TREB_Post_Manager {
             return;
         }
         
-        // Attempt geocoding if Google Maps API key is configured
-        if (empty($this->settings['google_maps_api_key'])) {
-            shift8_treb_log('No Google Maps API key for geocoding', array(
-                'mls_number' => esc_html($listing['ListingKey'])
-            ));
-            return;
-        }
+        // Attempt geocoding with OpenStreetMap (no API key required)
         
         $address = $listing['UnparsedAddress'];
         $coordinates = $this->geocode_address($address);
@@ -2129,12 +2123,10 @@ var ws_height = '300';
             }
         }
 
-        // Third, attempt geocoding if Google Maps API key is configured
-        if (!empty($this->settings['google_maps_api_key'])) {
-            $coordinates = $this->geocode_address($listing['UnparsedAddress']);
-            if ($coordinates && isset($coordinates['lat'])) {
-                return $coordinates['lat'];
-            }
+        // Third, attempt geocoding with OpenStreetMap (no API key required)
+        $coordinates = $this->geocode_address($listing['UnparsedAddress']);
+        if ($coordinates && isset($coordinates['lat'])) {
+            return $coordinates['lat'];
         }
 
         // Default to Toronto coordinates if no API key or geocoding fails
@@ -2163,12 +2155,10 @@ var ws_height = '300';
             }
         }
 
-        // Third, attempt geocoding if Google Maps API key is configured
-        if (!empty($this->settings['google_maps_api_key'])) {
-            $coordinates = $this->geocode_address($listing['UnparsedAddress']);
-            if ($coordinates && isset($coordinates['lng'])) {
-                return $coordinates['lng'];
-            }
+        // Third, attempt geocoding with OpenStreetMap (no API key required)
+        $coordinates = $this->geocode_address($listing['UnparsedAddress']);
+        if ($coordinates && isset($coordinates['lng'])) {
+            return $coordinates['lng'];
         }
 
         // Default to Toronto coordinates if no API key or geocoding fails
@@ -2176,18 +2166,13 @@ var ws_height = '300';
     }
 
     /**
-     * Geocode address using Google Maps API
+     * Geocode address using OpenStreetMap Nominatim API
      *
-     * @since 1.0.0
+     * @since 1.2.0
      * @param string $address Address to geocode
      * @return array|false Array with 'lat' and 'lng' keys, or false on failure
      */
     private function geocode_address($address) {
-        // Check if Google Maps API key is configured
-        if (empty($this->settings['google_maps_api_key'])) {
-            return false;
-        }
-
         // Check cache first (to avoid repeated API calls for same address)
         $cache_key = 'treb_geocode_' . md5($address);
         $cached_result = get_transient($cache_key);
@@ -2195,19 +2180,24 @@ var ws_height = '300';
             return $cached_result;
         }
 
-        // Make geocoding request
-        $api_key = $this->settings['google_maps_api_key'];
-        $encoded_address = urlencode($address);
-        $url = "https://maps.googleapis.com/maps/api/geocode/json?address={$encoded_address}&key={$api_key}";
+        // Clean up address for better geocoding results
+        $clean_address = $this->clean_address_for_geocoding($address);
+        $encoded_address = urlencode($clean_address);
+        
+        // Use OpenStreetMap Nominatim API (free, no API key required)
+        $url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ca&q={$encoded_address}";
 
         $response = wp_remote_get($url, array(
             'timeout' => 10,
-            'user-agent' => 'WordPress/TREB-Plugin'
+            'headers' => array(
+                'User-Agent' => 'WordPress/TREB-Plugin (shift8web.ca)'
+            )
         ));
 
         if (is_wp_error($response)) {
-            shift8_treb_log('Geocoding API error', array(
+            shift8_treb_log('OpenStreetMap geocoding error', array(
                 'address' => esc_html($address),
+                'clean_address' => esc_html($clean_address),
                 'error' => $response->get_error_message()
             ));
             return false;
@@ -2215,8 +2205,9 @@ var ws_height = '300';
 
         $response_code = wp_remote_retrieve_response_code($response);
         if ($response_code !== 200) {
-            shift8_treb_log('Geocoding API HTTP error', array(
+            shift8_treb_log('OpenStreetMap geocoding HTTP error', array(
                 'address' => esc_html($address),
+                'clean_address' => esc_html($clean_address),
                 'response_code' => $response_code
             ));
             return false;
@@ -2225,37 +2216,60 @@ var ws_height = '300';
         $body = wp_remote_retrieve_body($response);
         $data = json_decode($body, true);
 
-        if (json_last_error() !== JSON_ERROR_NONE || !isset($data['status'])) {
-            shift8_treb_log('Geocoding API invalid response', array(
-                'address' => esc_html($address)
-            ));
-            return false;
-        }
-
-        if ($data['status'] !== 'OK' || empty($data['results'])) {
-            shift8_treb_log('Geocoding API no results', array(
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            shift8_treb_log('OpenStreetMap geocoding invalid JSON', array(
                 'address' => esc_html($address),
-                'status' => $data['status']
+                'clean_address' => esc_html($clean_address)
             ));
             return false;
         }
 
-        // Extract coordinates
-        $location = $data['results'][0]['geometry']['location'];
+        if (empty($data) || !isset($data[0]['lat']) || !isset($data[0]['lon'])) {
+            shift8_treb_log('OpenStreetMap geocoding no results', array(
+                'address' => esc_html($address),
+                'clean_address' => esc_html($clean_address)
+            ));
+            return false;
+        }
+
+        // Extract coordinates (note: OpenStreetMap uses 'lon', we convert to 'lng')
         $coordinates = array(
-            'lat' => $location['lat'],
-            'lng' => $location['lng']
+            'lat' => floatval($data[0]['lat']),
+            'lng' => floatval($data[0]['lon'])
         );
 
-        // Cache result for 24 hours
-        set_transient($cache_key, $coordinates, DAY_IN_SECONDS);
+        // Cache result for 7 days (addresses don't change often)
+        set_transient($cache_key, $coordinates, 7 * DAY_IN_SECONDS);
 
-        shift8_treb_log('Address geocoded successfully', array(
+        shift8_treb_log('Address geocoded successfully with OpenStreetMap', array(
             'address' => esc_html($address),
+            'clean_address' => esc_html($clean_address),
             'coordinates' => $coordinates
         ));
 
         return $coordinates;
+    }
+
+    /**
+     * Clean address for better geocoding results
+     *
+     * @since 1.2.0
+     * @param string $address Raw address from AMPRE API
+     * @return string Cleaned address
+     */
+    private function clean_address_for_geocoding($address) {
+        // Remove common suffixes that confuse geocoding
+        $address = preg_replace('/,\s*Toronto\s+[A-Z]\d{2}(?:,\s*ON)?/i', ', Toronto, ON', $address);
+        
+        // Remove apartment/unit designations that can confuse geocoding
+        $address = preg_replace('/\s+(BSMT|MAIN|UPPER|LOWER|APT\s*\d+|UNIT\s*\d+|#\d+)\s*,?/i', '', $address);
+        
+        // Ensure we have Canada for better results
+        if (!preg_match('/,\s*(Canada|CA)\s*$/i', $address)) {
+            $address .= ', Canada';
+        }
+        
+        return trim($address);
     }
 
     /**

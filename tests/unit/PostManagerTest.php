@@ -56,9 +56,13 @@ class PostManagerTest extends TestCase {
         Functions\when('esc_html')->alias(function($text) { 
             return htmlspecialchars($text); 
         });
-        Functions\when('esc_url_raw')->alias(function($url) { 
-            return filter_var($url, FILTER_SANITIZE_URL); 
+        Functions\when('esc_url_raw')->alias(function($url) {
+            return filter_var($url, FILTER_SANITIZE_URL);
         });
+        
+        // Mock WordPress transient functions for caching
+        Functions\when('get_transient')->justReturn(false); // Always return false to skip cache
+        Functions\when('set_transient')->justReturn(true);
         Functions\when('get_option')->justReturn(array('debug_enabled' => '0'));
         Functions\when('wp_kses_post')->alias(function($content) { return strip_tags($content); });
         Functions\when('get_category_by_slug')->justReturn(false);
