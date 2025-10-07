@@ -4,7 +4,7 @@ Tags: real estate, listings, treb, ampre, mls
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -20,7 +20,7 @@ Shift8 TREB Real Estate Listings is a comprehensive WordPress plugin that automa
 * **AMPRE API Integration** - Secure Bearer token authentication with comprehensive error handling
 * **Unlimited Image Import** - Imports ALL available photos per listing with cross-hosting batch processing
 * **Universal Template System** - Compatible with all page builders (Visual Composer, Elementor, Gutenberg, Bricks)
-* **Google Maps Integration** - Interactive maps with geocoding and conditional display
+* **Google Maps Integration** - Interactive maps with free OpenStreetMap geocoding and conditional display
 * **WalkScore Integration** - Walkability scoring for properties
 * **Member-Based Categorization** - Automatic categorization based on agent membership
 * **WP-CLI Support** - Full command-line interface for server management
@@ -91,6 +91,16 @@ The plugin is designed for single-site installations. Multisite compatibility is
 
 == Changelog ==
 
+= 1.3.0 =
+* Replaced Google Maps geocoding with free OpenStreetMap Nominatim API
+* No API key required for geocoding (eliminates REQUEST_DENIED errors)
+* Unique coordinates for each listing instead of default Toronto fallback
+* Intelligent address cleaning for better geocoding accuracy
+* 7-day caching for improved performance
+* Google Maps API key now only needed for map display, not geocoding
+* Enhanced testing for OpenStreetMap integration
+* Updated documentation to clarify geocoding vs map display requirements
+
 = 1.2.0 =
 * Added Google Maps integration with conditional display
 * New direct MLS import via WP-CLI
@@ -119,6 +129,9 @@ The plugin is designed for single-site installations. Multisite compatibility is
 * Automated synchronization
 
 == Upgrade Notice ==
+
+= 1.3.0 =
+Important update: Replaced Google Maps geocoding with free OpenStreetMap for reliable, unique coordinates per listing. No API key required for geocoding.
 
 = 1.2.0 =
 Major update with Google Maps integration, direct MLS import, and enhanced diagnostics. All tests pass with zero tolerance policy.

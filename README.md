@@ -70,7 +70,7 @@ This plugin replaces manual listing management by automatically fetching propert
 - **Listing Age (days)**: Maximum age of listings to sync (1-365 days)
 
 ### Optional Integrations
-- **Google Maps API Key**: For geocoding addresses to lat/lng coordinates
+- **Google Maps API Key**: For displaying interactive maps (geocoding now uses free OpenStreetMap)
 - **WalkScore API Key**: For walkability scoring integration
 - **WalkScore ID**: Widget ID for WalkScore integration
 - **Listing Template**: Customizable post content template with universal placeholders
@@ -98,8 +98,8 @@ This plugin replaces manual listing management by automatically fetching propert
 - `%BASE64IMAGES%` - Base64 encoded URLs (Visual Composer compatible)
 
 #### Location & Mapping
-- `%MAPLAT%` - Latitude coordinate (with geocoding fallback)
-- `%MAPLNG%` - Longitude coordinate (with geocoding fallback)
+- `%MAPLAT%` - Latitude coordinate (OpenStreetMap geocoding with Toronto fallback)
+- `%MAPLNG%` - Longitude coordinate (OpenStreetMap geocoding with Toronto fallback)
 - `%WALKSCORECODE%` - WalkScore widget (if configured)
 
 #### Additional Features
@@ -232,7 +232,7 @@ shift8-treb/
 - Sensitive data (API tokens) encrypted using WordPress salts with intelligent handling
 - Logs stored in wp-content/uploads/shift8-treb-logs/ with automatic rotation
 - Images integrated into WordPress media library with proper metadata
-- Geocoding results cached using WordPress transients (24-hour expiration)
+- Geocoding results cached using WordPress transients (7-day expiration for OpenStreetMap)
 - Incremental sync timestamps tracked for efficient API usage
 
 ### Security Features
@@ -289,7 +289,17 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.2.0 (Current)
+### Version 1.3.0 (Current)
+- **🗺️ OpenStreetMap Geocoding**: Replaced Google Maps geocoding with free OpenStreetMap Nominatim API
+  - No API key required for geocoding (eliminates REQUEST_DENIED errors)
+  - Unique coordinates for each listing instead of default Toronto fallback
+  - Intelligent address cleaning for better geocoding accuracy
+  - 7-day caching for improved performance
+  - Google Maps API key now only needed for map display, not geocoding
+- **🧪 Enhanced Testing**: Updated test suite for OpenStreetMap integration
+- **📚 Updated Documentation**: Clarified geocoding vs map display API requirements
+
+### Version 1.2.0
 - **🚀 Unlimited Image Import**: Removed 5-image limit - now imports ALL available photos per listing
 - **⚡ Cross-Hosting Batch Processing**: Default batch processing with adaptive sizing based on hosting environment
   - Memory-aware batch sizing (2-8 images per batch)

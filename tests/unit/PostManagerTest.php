@@ -600,20 +600,44 @@ class PostManagerTest extends TestCase {
     }
 
     /**
-     * Test geocoding without API key
+     * Test geocoding with OpenStreetMap (no API key required)
      */
-    public function test_geocoding_without_api_key() {
-        // Test without Google Maps API key
-        $settings = array(); // No google_maps_api_key
+    public function test_geocoding_with_openstreetmap() {
+        // Test OpenStreetMap geocoding (no API key required)
+        $settings = array(); // No API key needed for OpenStreetMap
         $post_manager = new \Shift8_TREB_Post_Manager($settings);
 
         $reflection = new \ReflectionClass($post_manager);
         $method = $reflection->getMethod('geocode_address');
         $method->setAccessible(true);
 
+        // Mock wp_remote_get to return OpenStreetMap-style response
+        Functions\when('wp_remote_get')->justReturn(array(
+            'response' => array('code' => 200),
+            'body' => json_encode(array(
+                array(
+                    'lat' => '43.6532',
+                    'lon' => '-79.3832',
+                    'display_name' => '123 Main Street, Toronto, Ontario, Canada'
+                )
+            ))
+        ));
+        Functions\when('wp_remote_retrieve_response_code')->justReturn(200);
+        Functions\when('wp_remote_retrieve_body')->justReturn(json_encode(array(
+            array(
+                'lat' => '43.6532',
+                'lon' => '-79.3832',
+                'display_name' => '123 Main Street, Toronto, Ontario, Canada'
+            )
+        )));
+
         $result = $method->invoke($post_manager, '123 Main Street, Toronto, ON');
 
-        $this->assertFalse($result, 'Should return false without API key');
+        $this->assertIsArray($result, 'Should return coordinates array');
+        $this->assertArrayHasKey('lat', $result);
+        $this->assertArrayHasKey('lng', $result);
+        $this->assertEquals(43.6532, $result['lat']);
+        $this->assertEquals(-79.3832, $result['lng']);
     }
 
     /**
