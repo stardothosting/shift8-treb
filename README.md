@@ -288,7 +288,33 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.4.0 (Current)
+### Version 1.5.0 (Current)
+- **🛡️ OpenStreetMap Rate Limiting Compliance**: Comprehensive implementation to prevent API abuse
+  - Strict 1-request-per-second rate limiting using WordPress transients
+  - Automatic sleep() enforcement with detailed logging
+  - Enhanced 429 (Too Many Requests) error handling with exponential backoff
+  - Prevents IP blocking and ensures sustainable API usage
+- **🎯 Enhanced Address Geocoding**: Multiple fallback strategies for improved accuracy
+  - Multiple address cleaning variations (aggressive, conservative, basic)
+  - Intelligent unit number removal for TREB-specific address formats
+  - Automatic Canada suffix addition for better OpenStreetMap results
+  - Smart caching: 7-day success cache, 1-hour failure cache
+- **🧪 Comprehensive Test Coverage**: Expanded from 72 to 87 tests (292 assertions)
+  - Complete OpenStreetMap geocoding test suite (9 new tests)
+  - Members-only API filtering validation (6 new tests)
+  - Rate limiting, error handling, and edge case coverage
+  - Security testing for input sanitization and SQL injection prevention
+- **📚 Enhanced Documentation**: Updated .cursorrules with new patterns
+  - OpenStreetMap integration best practices
+  - External API rate limiting patterns
+  - Geocoding error handling strategies
+  - Testing considerations for WordPress constants
+- **🔒 Security Improvements**: Comprehensive input validation and output escaping
+  - All geocoding inputs properly sanitized
+  - Enhanced error logging with context data
+  - Robust handling of malformed API responses
+
+### Version 1.4.0
 - **🎯 API-Level Member Filtering**: New `--members-only` CLI flag for efficient member-specific sync
   - Filters `ListAgentKey` at API level instead of client-side (3 listings vs 100+)
   - Dramatic performance improvement for member-focused operations
@@ -306,7 +332,6 @@ This plugin is built to meet WordPress.org plugin directory standards:
   - API-level filtering best practices
   - CLI user experience patterns
   - Settings architecture patterns
-- **🧪 Maintained Test Coverage**: All 72 tests pass with 256 assertions
 
 ### Version 1.3.0
 - **🗺️ OpenStreetMap Geocoding**: Replaced Google Maps geocoding with free OpenStreetMap Nominatim API

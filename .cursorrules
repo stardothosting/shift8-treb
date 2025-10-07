@@ -1306,5 +1306,72 @@
             "highlighting": "Clearly indicate which settings are overridden vs stored",
             "debugging": "Help users understand why certain behavior is occurring"
         }
+    },
+    "openStreetMapIntegrationPatterns": {
+        "description": "Best practices for OpenStreetMap Nominatim API integration and rate limiting",
+        "rateLimitingCompliance": {
+            "rule": "ALWAYS respect OpenStreetMap's 1 request per second rate limit",
+            "implementation": "Use transients to track last request time and sleep() if needed",
+            "pattern": "get_transient('api_last_request') + sleep() if time_since < 1 second",
+            "consequences": "Violating rate limits can result in 429 errors and IP blocking",
+            "logging": "Log all rate limiting events for monitoring and debugging"
+        },
+        "addressCleaningStrategies": {
+            "rule": "Implement multiple address cleaning variations for better geocoding success",
+            "approach": "Try multiple cleaned address formats in order of aggressiveness",
+            "variations": [
+                "Most aggressive: Remove unit numbers after street names",
+                "Conservative: Keep original format but standardize",
+                "Basic: Street + city only as last resort"
+            ],
+            "trebSpecificIssues": "TREB addresses often have unit numbers directly after street names (e.g., 'Street 1210')",
+            "fallbackStrategy": "Try each variation until one succeeds, cache failures to avoid repeated attempts"
+        },
+        "geocodingErrorHandling": {
+            "rule": "Implement comprehensive error handling for geocoding failures",
+            "httpStatusCodes": "Handle 429 (rate limit), 200 (success), and other error codes specifically",
+            "jsonValidation": "Always validate JSON responses and handle malformed data",
+            "emptyResults": "Distinguish between API errors and 'no results found' scenarios",
+            "caching": "Cache successful results for 7 days, failures for 1 hour only"
+        },
+        "loggingBestPractices": {
+            "rule": "Provide detailed logging for geocoding operations",
+            "logEntries": [
+                "Rate limiting events with sleep duration",
+                "Each geocoding attempt with variation number",
+                "HTTP response codes and error details",
+                "Successful geocoding with OpenStreetMap display name",
+                "Cache hits vs API calls for performance monitoring"
+            ],
+            "context": "Always include original address, cleaned address, and attempt number in logs"
+        },
+        "testingConsiderations": {
+            "rule": "Account for WordPress constants not available in test environment",
+            "constants": "Replace MINUTE_IN_SECONDS, HOUR_IN_SECONDS, DAY_IN_SECONDS with numeric values",
+            "mocking": "Mock get_transient() and set_transient() for rate limiting tests",
+            "validation": "Test address cleaning variations with real TREB address formats"
+        }
+    },
+    "externalApiRateLimitingPatterns": {
+        "description": "General patterns for respecting external API rate limits",
+        "universalPrinciples": {
+            "rule": "Always research and implement rate limiting for external APIs",
+            "research": "Check API documentation for rate limits before implementation",
+            "implementation": "Use WordPress transients or database to track request timing",
+            "gracefulHandling": "Handle rate limit responses (429) with exponential backoff",
+            "monitoring": "Log rate limiting events for performance analysis"
+        },
+        "wordpressIntegration": {
+            "rule": "Use WordPress-native caching for rate limiting",
+            "transients": "Use get_transient()/set_transient() for temporary rate limit tracking",
+            "expiration": "Set reasonable expiration times (1-2 minutes) for rate limit data",
+            "cleanup": "Transients automatically expire, no manual cleanup needed"
+        },
+        "performanceOptimization": {
+            "rule": "Balance rate limiting with performance needs",
+            "caching": "Cache successful API responses to reduce API calls",
+            "batchProcessing": "Consider batching when APIs support it",
+            "fallbacks": "Provide meaningful fallbacks when APIs are unavailable or rate limited"
+        }
     }
 }

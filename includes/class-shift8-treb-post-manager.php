@@ -2154,7 +2154,7 @@ var ws_height = '300';
     }
 
     /**
-     * Geocode address using OpenStreetMap Nominatim API
+     * Geocode address using OpenStreetMap Nominatim API with multiple fallback attempts
      *
      * @since 1.2.0
      * @param string $address Address to geocode
@@ -2165,18 +2165,96 @@ var ws_height = '300';
         $cache_key = 'treb_geocode_' . md5($address);
         $cached_result = get_transient($cache_key);
         if ($cached_result !== false) {
+            shift8_treb_log('Using cached geocoding result', array(
+                'address' => esc_html($address),
+                'coordinates' => $cached_result
+            ));
             return $cached_result;
         }
 
-        // Clean up address for better geocoding results
-        $clean_address = $this->clean_address_for_geocoding($address);
+        // Get multiple address variations to try
+        $address_variations = $this->clean_address_for_geocoding($address);
+        
+        shift8_treb_log('Starting geocoding with multiple address variations', array(
+            'original_address' => esc_html($address),
+            'variations_count' => count($address_variations),
+            'variations' => array_map('esc_html', $address_variations)
+        ));
+
+        // Try each address variation until one succeeds
+        foreach ($address_variations as $index => $clean_address) {
+            $coordinates = $this->attempt_geocoding($clean_address, $address, $index + 1, count($address_variations));
+            
+            if ($coordinates) {
+                // Cache successful result for 7 days
+                set_transient($cache_key, $coordinates, 7 * 24 * 3600);
+                
+                shift8_treb_log('Address geocoded successfully with OpenStreetMap', array(
+                    'original_address' => esc_html($address),
+                    'successful_variation' => esc_html($clean_address),
+                    'attempt_number' => $index + 1,
+                    'coordinates' => $coordinates
+                ));
+                
+                return $coordinates;
+            }
+        }
+
+        // All variations failed - cache the failure to avoid repeated attempts
+        set_transient($cache_key, false, 1 * 3600); // Cache failures for 1 hour only
+        
+        shift8_treb_log('All geocoding attempts failed', array(
+            'original_address' => esc_html($address),
+            'variations_tried' => count($address_variations)
+        ));
+        
+        return false;
+    }
+
+    /**
+     * Attempt geocoding for a single address variation
+     *
+     * @since 1.4.0
+     * @param string $clean_address Cleaned address to geocode
+     * @param string $original_address Original address for logging
+     * @param int $attempt_number Current attempt number
+     * @param int $total_attempts Total number of attempts
+     * @return array|false Coordinates or false on failure
+     */
+    private function attempt_geocoding($clean_address, $original_address, $attempt_number, $total_attempts) {
         $encoded_address = urlencode($clean_address);
         
         // Use OpenStreetMap Nominatim API (free, no API key required)
         $url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ca&q={$encoded_address}";
 
+        // Respect OpenStreetMap's 1 request per second rate limit
+        // Store last request time to ensure we don't exceed rate limits
+        $last_request_time = get_transient('treb_osm_last_request');
+        if ($last_request_time !== false) {
+            $time_since_last = time() - $last_request_time;
+            if ($time_since_last < 1) {
+                $sleep_time = 1 - $time_since_last;
+                shift8_treb_log('OpenStreetMap rate limiting - sleeping', array(
+                    'sleep_seconds' => $sleep_time,
+                    'attempt' => "{$attempt_number}/{$total_attempts}",
+                    'address' => esc_html($clean_address)
+                ));
+                sleep($sleep_time);
+            }
+        }
+        
+        // Record this request time (expires after 2 minutes to handle edge cases)
+        set_transient('treb_osm_last_request', time(), 2 * 60);
+
+        shift8_treb_log('Making OpenStreetMap geocoding request', array(
+            'attempt' => "{$attempt_number}/{$total_attempts}",
+            'original_address' => esc_html($original_address),
+            'clean_address' => esc_html($clean_address),
+            'url' => esc_html($url)
+        ));
+
         $response = wp_remote_get($url, array(
-            'timeout' => 10,
+            'timeout' => 15, // Increased timeout for rate-limited requests
             'headers' => array(
                 'User-Agent' => 'WordPress/TREB-Plugin (shift8web.ca)'
             )
@@ -2184,7 +2262,8 @@ var ws_height = '300';
 
         if (is_wp_error($response)) {
             shift8_treb_log('OpenStreetMap geocoding error', array(
-                'address' => esc_html($address),
+                'attempt' => "{$attempt_number}/{$total_attempts}",
+                'original_address' => esc_html($original_address),
                 'clean_address' => esc_html($clean_address),
                 'error' => $response->get_error_message()
             ));
@@ -2192,11 +2271,26 @@ var ws_height = '300';
         }
 
         $response_code = wp_remote_retrieve_response_code($response);
+        
+        // Enhanced HTTP status code handling
+        if ($response_code === 429) {
+            shift8_treb_log('OpenStreetMap rate limit exceeded (429)', array(
+                'attempt' => "{$attempt_number}/{$total_attempts}",
+                'clean_address' => esc_html($clean_address),
+                'message' => 'Sleeping extra 2 seconds before next attempt'
+            ));
+            // Sleep extra time if we hit rate limit
+            sleep(2);
+            return false;
+        }
+        
         if ($response_code !== 200) {
             shift8_treb_log('OpenStreetMap geocoding HTTP error', array(
-                'address' => esc_html($address),
+                'attempt' => "{$attempt_number}/{$total_attempts}",
+                'original_address' => esc_html($original_address),
                 'clean_address' => esc_html($clean_address),
-                'response_code' => $response_code
+                'response_code' => $response_code,
+                'response_body' => wp_remote_retrieve_body($response)
             ));
             return false;
         }
@@ -2205,17 +2299,21 @@ var ws_height = '300';
         $data = json_decode($body, true);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            shift8_treb_log('OpenStreetMap geocoding invalid JSON', array(
-                'address' => esc_html($address),
-                'clean_address' => esc_html($clean_address)
+            shift8_treb_log('OpenStreetMap geocoding JSON error', array(
+                'attempt' => "{$attempt_number}/{$total_attempts}",
+                'original_address' => esc_html($original_address),
+                'clean_address' => esc_html($clean_address),
+                'json_error' => json_last_error_msg()
             ));
             return false;
         }
 
         if (empty($data) || !isset($data[0]['lat']) || !isset($data[0]['lon'])) {
             shift8_treb_log('OpenStreetMap geocoding no results', array(
-                'address' => esc_html($address),
-                'clean_address' => esc_html($clean_address)
+                'attempt' => "{$attempt_number}/{$total_attempts}",
+                'original_address' => esc_html($original_address),
+                'clean_address' => esc_html($clean_address),
+                'response_count' => is_array($data) ? count($data) : 0
             ));
             return false;
         }
@@ -2226,13 +2324,12 @@ var ws_height = '300';
             'lng' => floatval($data[0]['lon'])
         );
 
-        // Cache result for 7 days (addresses don't change often)
-        set_transient($cache_key, $coordinates, 7 * DAY_IN_SECONDS);
-
-        shift8_treb_log('Address geocoded successfully with OpenStreetMap', array(
-            'address' => esc_html($address),
+        shift8_treb_log('OpenStreetMap geocoding successful', array(
+            'attempt' => "{$attempt_number}/{$total_attempts}",
+            'original_address' => esc_html($original_address),
             'clean_address' => esc_html($clean_address),
-            'coordinates' => $coordinates
+            'coordinates' => $coordinates,
+            'osm_display_name' => isset($data[0]['display_name']) ? esc_html($data[0]['display_name']) : 'N/A'
         ));
 
         return $coordinates;
@@ -2243,25 +2340,50 @@ var ws_height = '300';
      *
      * @since 1.2.0
      * @param string $address Raw address from AMPRE API
-     * @return string Cleaned address
+     * @return array Array of cleaned address variations to try
      */
     private function clean_address_for_geocoding($address) {
-        // Remove common suffixes that confuse geocoding
-        $address = preg_replace('/,\s*Toronto\s+[A-Z]\d{2}(?:,\s*ON)?/i', ', Toronto, ON', $address);
+        $variations = array();
+        
+        // Base cleaning - remove Toronto area codes (e.g., "Toronto C01" -> "Toronto")
+        $base_address = preg_replace('/,\s*Toronto\s+[A-Z]\d{2}(?:,\s*ON)?/i', ', Toronto, ON', $address);
         
         // Remove apartment/unit designations that can confuse geocoding
-        $address = preg_replace('/\s+(BSMT|MAIN|UPPER|LOWER|APT\s*\d+|UNIT\s*\d+|#\d+)\s*,?/i', '', $address);
+        $base_address = preg_replace('/\s+(BSMT|MAIN|UPPER|LOWER|APT\s*\d+|UNIT\s*\d+|#\d+)\s*,?/i', '', $base_address);
         
-        // Remove unit numbers that appear directly after street names (common TREB format)
-        // e.g., "55 East Liberty Street 1210" -> "55 East Liberty Street"
-        $address = preg_replace('/(\b(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Boulevard|Blvd|Crescent|Cres|Circle|Cir|Court|Ct|Lane|Ln|Way|Place|Pl)\s+)\d+/i', '$1', $address);
+        // Variation 1: Remove unit numbers after street names (most aggressive cleaning)
+        $clean1 = preg_replace('/(\b(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Boulevard|Blvd|Crescent|Cres|Circle|Cir|Court|Ct|Lane|Ln|Way|Place|Pl)\s+)\d+/i', '$1', $base_address);
+        $clean1 = $this->ensure_canada_suffix($clean1);
+        $variations[] = trim($clean1);
         
-        // Ensure we have Canada for better results
+        // Variation 2: Keep original format but clean (less aggressive)
+        $clean2 = $this->ensure_canada_suffix($base_address);
+        $variations[] = trim($clean2);
+        
+        // Variation 3: Street name + city only (most basic)
+        if (preg_match('/^(.+?)(\d+\s+.+?(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Boulevard|Blvd|Crescent|Cres|Circle|Cir|Court|Ct|Lane|Ln|Way|Place|Pl))\s*\d*\s*,?\s*(.+?)(?:,\s*ON)?/i', $address, $matches)) {
+            $street_part = trim($matches[1] . ' ' . preg_replace('/\s+\d+$/', '', $matches[2]));
+            $city_part = preg_replace('/\s+[A-Z]\d{2}/', '', $matches[3]);
+            $clean3 = $street_part . ', ' . $city_part . ', ON, Canada';
+            $variations[] = trim($clean3);
+        }
+        
+        // Remove duplicates and return unique variations
+        return array_unique($variations);
+    }
+    
+    /**
+     * Ensure address has Canada suffix
+     *
+     * @since 1.4.0
+     * @param string $address Address to check
+     * @return string Address with Canada suffix
+     */
+    private function ensure_canada_suffix($address) {
         if (!preg_match('/,\s*(Canada|CA)\s*$/i', $address)) {
             $address .= ', Canada';
         }
-        
-        return trim($address);
+        return $address;
     }
 
     /**

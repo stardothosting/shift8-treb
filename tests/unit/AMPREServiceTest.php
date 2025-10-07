@@ -547,5 +547,164 @@ class AMPREServiceTest extends TestCase {
         $this->assertEquals('ampre_media_error', $result->get_error_code());
     }
 
+    /**
+     * Test members-only API filtering in query parameters
+     */
+    public function test_members_only_filtering() {
+        // Test with members-only enabled and member IDs configured
+        $settings_with_members = array(
+            'bearer_token' => 'test_token',
+            'members_only' => true,
+            'member_id' => '2229166,9580044',
+            'listing_age_days' => 30
+        );
+
+        $ampre_service = new \Shift8_TREB_AMPRE_Service($settings_with_members);
+        
+        // Use reflection to test private method
+        $reflection = new \ReflectionClass($ampre_service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+        
+        $query_params = $method->invoke($ampre_service);
+        
+        // Should contain member ID filter
+        $this->assertStringContainsString('ListAgentKey eq \'2229166\'', $query_params, 'Should filter for first member ID');
+        $this->assertStringContainsString('ListAgentKey eq \'9580044\'', $query_params, 'Should filter for second member ID');
+        $this->assertStringContainsString(' or ', $query_params, 'Should use OR logic for multiple member IDs');
+        $this->assertStringContainsString('ContractStatus eq \'Available\'', $query_params, 'Should still include status filter');
+    }
+
+    /**
+     * Test members-only filtering without member IDs configured
+     */
+    public function test_members_only_without_member_ids() {
+        // Test with members-only enabled but no member IDs
+        $settings_without_members = array(
+            'bearer_token' => 'test_token',
+            'members_only' => true,
+            'member_id' => '', // Empty member ID
+            'listing_age_days' => 30
+        );
+
+        $ampre_service = new \Shift8_TREB_AMPRE_Service($settings_without_members);
+        
+        $reflection = new \ReflectionClass($ampre_service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+        
+        $query_params = $method->invoke($ampre_service);
+        
+        // Should NOT contain member ID filter when member_id is empty
+        $this->assertStringNotContainsString('ListAgentKey', $query_params, 'Should not filter by member ID when none configured');
+        $this->assertStringContainsString('ContractStatus eq \'Available\'', $query_params, 'Should still include status filter');
+    }
+
+    /**
+     * Test members-only filtering disabled
+     */
+    public function test_members_only_disabled() {
+        // Test with members-only disabled (even with member IDs configured)
+        $settings_disabled = array(
+            'bearer_token' => 'test_token',
+            'members_only' => false,
+            'member_id' => '2229166,9580044',
+            'listing_age_days' => 30
+        );
+
+        $ampre_service = new \Shift8_TREB_AMPRE_Service($settings_disabled);
+        
+        $reflection = new \ReflectionClass($ampre_service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+        
+        $query_params = $method->invoke($ampre_service);
+        
+        // Should NOT contain member ID filter when members_only is false
+        $this->assertStringNotContainsString('ListAgentKey', $query_params, 'Should not filter by member ID when members_only is false');
+        $this->assertStringContainsString('ContractStatus eq \'Available\'', $query_params, 'Should still include status filter');
+    }
+
+    /**
+     * Test single member ID filtering
+     */
+    public function test_single_member_id_filtering() {
+        // Test with single member ID
+        $settings_single_member = array(
+            'bearer_token' => 'test_token',
+            'members_only' => true,
+            'member_id' => '2229166', // Single member ID
+            'listing_age_days' => 30
+        );
+
+        $ampre_service = new \Shift8_TREB_AMPRE_Service($settings_single_member);
+        
+        $reflection = new \ReflectionClass($ampre_service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+        
+        $query_params = $method->invoke($ampre_service);
+        
+        // Should contain single member ID filter without OR logic
+        $this->assertStringContainsString('ListAgentKey eq \'2229166\'', $query_params, 'Should filter for single member ID');
+        $this->assertStringNotContainsString(' or ', $query_params, 'Should not use OR logic for single member ID');
+    }
+
+    /**
+     * Test member ID sanitization in filters
+     */
+    public function test_member_id_sanitization() {
+        // Test with potentially unsafe member IDs
+        $settings_unsafe = array(
+            'bearer_token' => 'test_token',
+            'members_only' => true,
+            'member_id' => '2229166\'; DROP TABLE listings; --,9580044',
+            'listing_age_days' => 30
+        );
+
+        $ampre_service = new \Shift8_TREB_AMPRE_Service($settings_unsafe);
+        
+        $reflection = new \ReflectionClass($ampre_service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+        
+        $query_params = $method->invoke($ampre_service);
+        
+        // Should sanitize member IDs - the dangerous parts should be HTML encoded or removed
+        // The sanitize_text_field() function HTML-encodes dangerous characters
+        $this->assertStringContainsString('&#039;', $query_params, 'Should HTML-encode single quotes');
+        $this->assertStringContainsString('ListAgentKey', $query_params, 'Should still include valid member ID filter');
+        
+        // Verify that the dangerous SQL is still there but HTML-encoded (making it safe)
+        // This shows sanitization is working by encoding rather than removing
+        $this->assertStringContainsString('DROP TABLE', $query_params, 'Dangerous SQL should be present but HTML-encoded');
+        $this->assertStringNotContainsString("'; DROP", $query_params, 'Should not contain unencoded SQL injection syntax');
+    }
+
+    /**
+     * Test query parameter combination with incremental sync and members-only
+     */
+    public function test_incremental_sync_with_members_only() {
+        // Test combining incremental sync timestamp with members-only filtering
+        $settings_combined = array(
+            'bearer_token' => 'test_token',
+            'members_only' => true,
+            'member_id' => '2229166',
+            'last_sync_timestamp' => '2023-12-01T10:00:00Z'
+        );
+
+        $ampre_service = new \Shift8_TREB_AMPRE_Service($settings_combined);
+        
+        $reflection = new \ReflectionClass($ampre_service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+        
+        $query_params = $method->invoke($ampre_service);
+        
+        // Should contain both timestamp and member ID filters
+        $this->assertStringContainsString('ModificationTimestamp ge 2023-12-01T10:00:00Z', $query_params, 'Should include timestamp filter');
+        $this->assertStringContainsString('ListAgentKey eq \'2229166\'', $query_params, 'Should include member ID filter');
+        $this->assertStringContainsString(' and ', $query_params, 'Should combine filters with AND logic');
+    }
 
 }

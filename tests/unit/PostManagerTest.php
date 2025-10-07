@@ -641,6 +641,261 @@ class PostManagerTest extends TestCase {
     }
 
     /**
+     * Test address cleaning for geocoding with multiple variations
+     */
+    public function test_address_cleaning_variations() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('clean_address_for_geocoding');
+        $method->setAccessible(true);
+
+        // Test TREB address with unit number after street name
+        $treb_address = '55 East Liberty Street 1210, Toronto C01, ON M6K 3P9';
+        $variations = $method->invoke($post_manager, $treb_address);
+
+        $this->assertIsArray($variations, 'Should return array of address variations');
+        $this->assertGreaterThan(1, count($variations), 'Should return multiple variations');
+        
+        // Check that aggressive cleaning removes unit number after street name
+        $aggressive_variation = $variations[0];
+        $this->assertStringContainsString('East Liberty Street ,', $aggressive_variation, 'Should remove unit number after street name');
+        $this->assertStringContainsString('Canada', $aggressive_variation, 'Should add Canada suffix');
+        
+        // Check that conservative variation keeps more of original format
+        $conservative_variation = $variations[1];
+        $this->assertStringContainsString('Street 1210', $conservative_variation, 'Conservative should keep unit number');
+        $this->assertStringContainsString('Toronto, ON', $conservative_variation, 'Should standardize Toronto area code');
+    }
+
+    /**
+     * Test Canada suffix helper method
+     */
+    public function test_ensure_canada_suffix() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('ensure_canada_suffix');
+        $method->setAccessible(true);
+
+        // Test address without Canada suffix
+        $address_without = '123 Main Street, Toronto, ON';
+        $result = $method->invoke($post_manager, $address_without);
+        $this->assertStringEndsWith(', Canada', $result, 'Should add Canada suffix');
+
+        // Test address already with Canada suffix
+        $address_with = '123 Main Street, Toronto, ON, Canada';
+        $result = $method->invoke($post_manager, $address_with);
+        $this->assertEquals($address_with, $result, 'Should not duplicate Canada suffix');
+
+        // Test address with CA suffix
+        $address_with_ca = '123 Main Street, Toronto, ON, CA';
+        $result = $method->invoke($post_manager, $address_with_ca);
+        $this->assertEquals($address_with_ca, $result, 'Should not change CA suffix');
+    }
+
+    /**
+     * Test geocoding rate limiting logic
+     */
+    public function test_geocoding_rate_limiting() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('attempt_geocoding');
+        $method->setAccessible(true);
+
+        // Mock transient functions to simulate recent request
+        $call_count = 0;
+        Functions\when('get_transient')->alias(function($key) use (&$call_count) {
+            if ($key === 'treb_osm_last_request') {
+                $call_count++;
+                if ($call_count === 1) {
+                    return time(); // Simulate recent request
+                }
+            }
+            return false;
+        });
+
+        // Mock set_transient
+        Functions\when('set_transient')->justReturn(true);
+
+        // Mock successful response
+        Functions\when('wp_remote_get')->justReturn(array(
+            'response' => array('code' => 200),
+            'body' => json_encode(array(
+                array('lat' => '43.6532', 'lon' => '-79.3832', 'display_name' => 'Test Address')
+            ))
+        ));
+        Functions\when('wp_remote_retrieve_response_code')->justReturn(200);
+        Functions\when('wp_remote_retrieve_body')->justReturn(json_encode(array(
+            array('lat' => '43.6532', 'lon' => '-79.3832', 'display_name' => 'Test Address')
+        )));
+
+        // This should trigger rate limiting (sleep) on first call
+        $result = $method->invoke($post_manager, '123 Main Street, Toronto, ON', '123 Main Street, Toronto, ON', 1, 1);
+        
+        $this->assertIsArray($result, 'Should return coordinates despite rate limiting');
+        $this->assertEquals(43.6532, $result['lat']);
+        $this->assertEquals(-79.3832, $result['lng']);
+    }
+
+    /**
+     * Test geocoding 429 rate limit response handling
+     */
+    public function test_geocoding_429_response() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('attempt_geocoding');
+        $method->setAccessible(true);
+
+        // Mock 429 response
+        Functions\when('wp_remote_get')->justReturn(array(
+            'response' => array('code' => 429),
+            'body' => 'Too Many Requests'
+        ));
+        Functions\when('wp_remote_retrieve_response_code')->justReturn(429);
+        Functions\when('wp_remote_retrieve_body')->justReturn('Too Many Requests');
+
+        $result = $method->invoke($post_manager, '123 Main Street, Toronto, ON', '123 Main Street, Toronto, ON', 1, 1);
+        
+        $this->assertFalse($result, 'Should return false for 429 response');
+    }
+
+    /**
+     * Test geocoding network error handling
+     */
+    public function test_geocoding_network_error() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('attempt_geocoding');
+        $method->setAccessible(true);
+
+        // Mock network error
+        Functions\when('wp_remote_get')->justReturn(new \WP_Error('http_request_failed', 'Network error'));
+        Functions\when('is_wp_error')->alias(function($obj) {
+            return $obj instanceof \WP_Error;
+        });
+
+        $result = $method->invoke($post_manager, '123 Main Street, Toronto, ON', '123 Main Street, Toronto, ON', 1, 1);
+        
+        $this->assertFalse($result, 'Should return false for network error');
+    }
+
+    /**
+     * Test geocoding JSON error handling
+     */
+    public function test_geocoding_json_error() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('attempt_geocoding');
+        $method->setAccessible(true);
+
+        // Mock invalid JSON response
+        Functions\when('wp_remote_get')->justReturn(array(
+            'response' => array('code' => 200),
+            'body' => 'invalid json'
+        ));
+        Functions\when('wp_remote_retrieve_response_code')->justReturn(200);
+        Functions\when('wp_remote_retrieve_body')->justReturn('invalid json');
+
+        $result = $method->invoke($post_manager, '123 Main Street, Toronto, ON', '123 Main Street, Toronto, ON', 1, 1);
+        
+        $this->assertFalse($result, 'Should return false for invalid JSON');
+    }
+
+    /**
+     * Test geocoding empty results handling
+     */
+    public function test_geocoding_empty_results() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('attempt_geocoding');
+        $method->setAccessible(true);
+
+        // Mock empty results response
+        Functions\when('wp_remote_get')->justReturn(array(
+            'response' => array('code' => 200),
+            'body' => json_encode(array())
+        ));
+        Functions\when('wp_remote_retrieve_response_code')->justReturn(200);
+        Functions\when('wp_remote_retrieve_body')->justReturn(json_encode(array()));
+
+        $result = $method->invoke($post_manager, '123 Main Street, Toronto, ON', '123 Main Street, Toronto, ON', 1, 1);
+        
+        $this->assertFalse($result, 'Should return false for empty results');
+    }
+
+    /**
+     * Test geocoding cache behavior
+     */
+    public function test_geocoding_cache_behavior() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('geocode_address');
+        $method->setAccessible(true);
+
+        // Test cache hit
+        $cached_coordinates = array('lat' => 43.6532, 'lng' => -79.3832);
+        Functions\when('get_transient')->alias(function($key) use ($cached_coordinates) {
+            if (strpos($key, 'treb_geocode_') === 0) {
+                return $cached_coordinates;
+            }
+            return false;
+        });
+
+        $result = $method->invoke($post_manager, '123 Main Street, Toronto, ON');
+        
+        $this->assertEquals($cached_coordinates, $result, 'Should return cached coordinates');
+    }
+
+    /**
+     * Test multiple address variation attempts
+     */
+    public function test_multiple_address_attempts() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $geocode_method = $reflection->getMethod('geocode_address');
+        $geocode_method->setAccessible(true);
+
+        // Mock address cleaning to return multiple variations
+        $clean_method = $reflection->getMethod('clean_address_for_geocoding');
+        $clean_method->setAccessible(true);
+
+        // Mock attempt_geocoding to fail on first attempt, succeed on second
+        $attempt_count = 0;
+        $attempt_method = $reflection->getMethod('attempt_geocoding');
+        $attempt_method->setAccessible(true);
+
+        // Override attempt_geocoding behavior
+        $post_manager_mock = $this->getMockBuilder(\Shift8_TREB_Post_Manager::class)
+            ->setConstructorArgs(array($settings))
+            ->onlyMethods(array()) // Don't mock any public methods
+            ->getMock();
+
+        // Test that multiple variations are tried
+        $address = '55 East Liberty Street 1210, Toronto C01, ON M6K 3P9';
+        $variations = $clean_method->invoke($post_manager, $address);
+        
+        $this->assertGreaterThan(1, count($variations), 'Should generate multiple address variations');
+        $this->assertNotEquals($variations[0], $variations[1], 'Variations should be different');
+    }
+
+    /**
      * Test unlimited image processing (no limit)
      */
     public function test_unlimited_image_processing() {

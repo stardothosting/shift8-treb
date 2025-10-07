@@ -4,7 +4,7 @@ Tags: real estate, listings, treb, ampre, mls
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.4.0
+Stable tag: 1.5.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -91,6 +91,14 @@ The plugin is designed for single-site installations. Multisite compatibility is
 
 == Changelog ==
 
+= 1.5.0 =
+* OpenStreetMap Rate Limiting Compliance: Strict 1-request-per-second enforcement to prevent API abuse
+* Enhanced Address Geocoding: Multiple fallback strategies with intelligent unit number removal for TREB addresses
+* Comprehensive Test Coverage: Expanded from 72 to 87 tests (292 assertions) with complete geocoding and API filtering validation
+* Security Improvements: Enhanced input sanitization, output escaping, and robust error handling
+* Enhanced Documentation: Updated development patterns and best practices for external API integration
+* Prevents IP blocking and ensures sustainable OpenStreetMap usage
+
 = 1.4.0 =
 * Added --members-only CLI flag for API-level member filtering
 * Dramatic performance improvement: 3 listings vs 100+ with member filtering
@@ -99,7 +107,6 @@ The plugin is designed for single-site installations. Multisite compatibility is
 * Flexible settings architecture with temporary CLI overrides
 * Settings dependency validation for CLI flags
 * Expanded development patterns in .cursorrules
-* Maintained 72 tests with 256 assertions - all passing
 
 = 1.3.0 =
 * Replaced Google Maps geocoding with free OpenStreetMap Nominatim API
@@ -139,6 +146,9 @@ The plugin is designed for single-site installations. Multisite compatibility is
 * Automated synchronization
 
 == Upgrade Notice ==
+
+= 1.5.0 =
+Critical update: Implements OpenStreetMap rate limiting compliance to prevent API abuse and IP blocking. Enhanced geocoding accuracy with multiple fallback strategies. Comprehensive test coverage expansion ensures reliability.
 
 = 1.4.0 =
 Performance enhancement: New --members-only CLI flag provides dramatic speed improvement for member-specific operations (3 vs 100+ listings). Enhanced CLI experience with better documentation and validation.
