@@ -287,7 +287,7 @@ class Shift8_TREB_Post_Manager {
         $post_data = array(
             'ID' => $post_id,
             'post_title' => $this->generate_post_title($listing),
-            'post_content' => $this->generate_post_content($listing),
+            'post_content' => $this->generate_post_content($listing, $post_id),
             'post_excerpt' => $this->generate_post_excerpt($listing),
             'post_status' => 'publish',
             'post_date' => current_time('mysql'),
@@ -339,7 +339,7 @@ class Shift8_TREB_Post_Manager {
      * @param array $listing Listing data
      * @return string Post content
      */
-    private function generate_post_content($listing) {
+    private function generate_post_content($listing, $post_id = null) {
         $template = isset($this->settings['listing_template']) ? $this->settings['listing_template'] : $this->get_default_template();
 
         // Parse address components
@@ -394,9 +394,9 @@ class Shift8_TREB_Post_Manager {
             
             
             // Map coordinates for Google Maps (with geocoding fallback)
-            '%MAPLAT%' => $this->get_listing_latitude($listing),
-            '%MAPLNG%' => $this->get_listing_longitude($listing),
-            '%GOOGLEMAPCODE%' => $this->get_google_map_html($listing)
+            '%MAPLAT%' => $this->get_listing_latitude($listing, $post_id),
+            '%MAPLNG%' => $this->get_listing_longitude($listing, $post_id),
+            '%GOOGLEMAPCODE%' => $this->get_google_map_html($listing, $post_id)
         );
 
         // Replace placeholders in template
@@ -619,6 +619,9 @@ class Shift8_TREB_Post_Manager {
         update_post_meta($post_id, 'shift8_treb_import_date', current_time('mysql'));
         update_post_meta($post_id, 'shift8_treb_last_updated', current_time('mysql'));
         
+        // Store geocoded coordinates if AMPRE API didn't provide them
+        $this->store_geocoded_coordinates($post_id, $listing);
+        
         shift8_treb_log('Stored listing meta fields', array(
             'post_id' => $post_id,
             'mls_number' => esc_html($listing['ListingKey'] ?? 'unknown'),
@@ -670,6 +673,63 @@ class Shift8_TREB_Post_Manager {
                 
             default:
                 return sanitize_text_field($value);
+        }
+    }
+
+    /**
+     * Store geocoded coordinates as meta fields if not provided by AMPRE API
+     *
+     * @since 1.2.0
+     * @param int $post_id Post ID
+     * @param array $listing Listing data
+     * @return void
+     */
+    private function store_geocoded_coordinates($post_id, $listing) {
+        // Skip if AMPRE API already provided coordinates
+        if (isset($listing['Latitude']) && isset($listing['Longitude']) && 
+            !empty($listing['Latitude']) && !empty($listing['Longitude'])) {
+            // AMPRE provided coordinates, they're already stored by the meta fields loop
+            shift8_treb_log('Using AMPRE API coordinates', array(
+                'mls_number' => esc_html($listing['ListingKey']),
+                'latitude' => $listing['Latitude'],
+                'longitude' => $listing['Longitude']
+            ));
+            return;
+        }
+        
+        // Attempt geocoding if Google Maps API key is configured
+        if (empty($this->settings['google_maps_api_key'])) {
+            shift8_treb_log('No Google Maps API key for geocoding', array(
+                'mls_number' => esc_html($listing['ListingKey'])
+            ));
+            return;
+        }
+        
+        $address = $listing['UnparsedAddress'];
+        $coordinates = $this->geocode_address($address);
+        
+        if ($coordinates && isset($coordinates['lat']) && isset($coordinates['lng'])) {
+            // Store geocoded coordinates as meta fields
+            update_post_meta($post_id, 'shift8_treb_latitude', floatval($coordinates['lat']));
+            update_post_meta($post_id, 'shift8_treb_longitude', floatval($coordinates['lng']));
+            
+            shift8_treb_log('Stored geocoded coordinates', array(
+                'mls_number' => esc_html($listing['ListingKey']),
+                'address' => esc_html($address),
+                'latitude' => $coordinates['lat'],
+                'longitude' => $coordinates['lng']
+            ));
+        } else {
+            // Store default Toronto coordinates so maps still work
+            update_post_meta($post_id, 'shift8_treb_latitude', 43.6532);
+            update_post_meta($post_id, 'shift8_treb_longitude', -79.3832);
+            
+            shift8_treb_log('Geocoding failed, stored default Toronto coordinates', array(
+                'mls_number' => esc_html($listing['ListingKey']),
+                'address' => esc_html($address),
+                'latitude' => 43.6532,
+                'longitude' => -79.3832
+            ));
         }
     }
 
@@ -2052,15 +2112,24 @@ var ws_height = '300';
      *
      * @since 1.0.0
      * @param array $listing Listing data
+     * @param int $post_id Optional post ID to check stored coordinates
      * @return string Latitude coordinate
      */
-    private function get_listing_latitude($listing) {
+    private function get_listing_latitude($listing, $post_id = null) {
         // First, try to use AMPRE API provided coordinates
         if (isset($listing['Latitude']) && !empty($listing['Latitude'])) {
             return floatval($listing['Latitude']);
         }
+        
+        // Second, check if we have stored coordinates from previous geocoding
+        if ($post_id) {
+            $stored_lat = get_post_meta($post_id, 'shift8_treb_latitude', true);
+            if (!empty($stored_lat)) {
+                return floatval($stored_lat);
+            }
+        }
 
-        // Only attempt geocoding if Google Maps API key is configured
+        // Third, attempt geocoding if Google Maps API key is configured
         if (!empty($this->settings['google_maps_api_key'])) {
             $coordinates = $this->geocode_address($listing['UnparsedAddress']);
             if ($coordinates && isset($coordinates['lat'])) {
@@ -2077,15 +2146,24 @@ var ws_height = '300';
      *
      * @since 1.0.0
      * @param array $listing Listing data
+     * @param int $post_id Optional post ID to check stored coordinates
      * @return string Longitude coordinate
      */
-    private function get_listing_longitude($listing) {
+    private function get_listing_longitude($listing, $post_id = null) {
         // First, try to use AMPRE API provided coordinates
         if (isset($listing['Longitude']) && !empty($listing['Longitude'])) {
             return floatval($listing['Longitude']);
         }
+        
+        // Second, check if we have stored coordinates from previous geocoding
+        if ($post_id) {
+            $stored_lng = get_post_meta($post_id, 'shift8_treb_longitude', true);
+            if (!empty($stored_lng)) {
+                return floatval($stored_lng);
+            }
+        }
 
-        // Only attempt geocoding if Google Maps API key is configured
+        // Third, attempt geocoding if Google Maps API key is configured
         if (!empty($this->settings['google_maps_api_key'])) {
             $coordinates = $this->geocode_address($listing['UnparsedAddress']);
             if ($coordinates && isset($coordinates['lng'])) {
@@ -2331,11 +2409,12 @@ var ws_height = '300';
      *
      * @since 1.2.0
      * @param array $listing Listing data
+     * @param int $post_id Optional post ID to check stored coordinates
      * @return string Google Map HTML div or empty string
      */
-    private function get_google_map_html($listing) {
+    private function get_google_map_html($listing, $post_id = null) {
         // Only show map if we have Google Maps API key and coordinates
-        if (!shift8_treb_has_google_maps_api_key() || !shift8_treb_has_listing_coordinates($listing)) {
+        if (!shift8_treb_has_google_maps_api_key() || !shift8_treb_has_listing_coordinates($listing, $post_id)) {
             return '';
         }
         

@@ -646,23 +646,45 @@ function shift8_treb_init_map() {
      * @return array|false Coordinates array or false
      */
     private function get_post_coordinates($post_id) {
-        // Try to extract coordinates from post content
-        $post_content = get_post_field('post_content', $post_id);
+        // First, check stored meta fields (from geocoding or AMPRE API)
+        $stored_lat = get_post_meta($post_id, 'shift8_treb_latitude', true);
+        $stored_lng = get_post_meta($post_id, 'shift8_treb_longitude', true);
         
-        // Look for latitude and longitude in the content (from template placeholders)
-        if (preg_match('/lat:\s*([0-9.-]+)/', $post_content, $lat_matches) &&
-            preg_match('/lng:\s*([0-9.-]+)/', $post_content, $lng_matches)) {
+        if (!empty($stored_lat) && !empty($stored_lng)) {
             return array(
-                'lat' => $lat_matches[1],
-                'lng' => $lng_matches[1]
+                'lat' => floatval($stored_lat),
+                'lng' => floatval($stored_lng)
             );
         }
         
-        // Fallback to Toronto coordinates if not found
-        return array(
-            'lat' => '43.6532',
-            'lng' => '-79.3832'
-        );
+        // Second, try to extract coordinates from post content (legacy support)
+        $post_content = get_post_field('post_content', $post_id);
+        
+        // Look for coordinate values in various formats
+        if (preg_match('/lat:\s*([0-9.-]+)/', $post_content, $lat_matches) &&
+            preg_match('/lng:\s*([0-9.-]+)/', $post_content, $lng_matches)) {
+            return array(
+                'lat' => floatval($lat_matches[1]),
+                'lng' => floatval($lng_matches[1])
+            );
+        }
+        
+        // Look for numeric coordinate values (from %MAPLAT% and %MAPLNG% placeholders)
+        if (preg_match('/([0-9.-]+),\s*([0-9.-]+)/', $post_content, $coord_matches)) {
+            $potential_lat = floatval($coord_matches[1]);
+            $potential_lng = floatval($coord_matches[2]);
+            
+            // Basic validation for Toronto area coordinates
+            if ($potential_lat > 40 && $potential_lat < 50 && $potential_lng < -70 && $potential_lng > -90) {
+                return array(
+                    'lat' => $potential_lat,
+                    'lng' => $potential_lng
+                );
+            }
+        }
+        
+        // No valid coordinates found - return false to indicate geocoding needed
+        return false;
     }
     
     /**
@@ -854,13 +876,23 @@ function shift8_treb_has_google_maps_api_key() {
  *
  * @since 1.2.0
  * @param array $listing Listing data
+ * @param int $post_id Optional post ID to check stored coordinates
  * @return bool True if listing has coordinates or can be geocoded
  */
-function shift8_treb_has_listing_coordinates($listing) {
+function shift8_treb_has_listing_coordinates($listing, $post_id = null) {
     // Check if AMPRE API provided coordinates
     if (isset($listing['Latitude']) && isset($listing['Longitude']) && 
         !empty($listing['Latitude']) && !empty($listing['Longitude'])) {
         return true;
+    }
+    
+    // Check if we have stored coordinates from previous geocoding
+    if ($post_id) {
+        $stored_lat = get_post_meta($post_id, 'shift8_treb_latitude', true);
+        $stored_lng = get_post_meta($post_id, 'shift8_treb_longitude', true);
+        if (!empty($stored_lat) && !empty($stored_lng)) {
+            return true;
+        }
     }
     
     // Check if we have an address for geocoding and Google Maps API key
