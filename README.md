@@ -104,7 +104,6 @@ This plugin replaces manual listing management by automatically fetching propert
 
 #### Additional Features
 - `%GOOGLEMAPCODE%` - Google Maps widget (requires API key)
-- `%PHONEMSG%` - Contact phone message
 - `%VIRTUALTOUR%` - Virtual tour link (if available)
 - `%WPBLOG%` - WordPress site URL
 

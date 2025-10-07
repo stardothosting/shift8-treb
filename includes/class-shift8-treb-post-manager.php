@@ -368,7 +368,6 @@ class Shift8_TREB_Post_Manager {
             '%APT_NUM%' => $address_parts['unit'],
             
             // Additional template placeholders
-            '%PHONEMSG%' => $this->get_phone_message(),
             '%VIRTUALTOUR%' => $this->get_virtual_tour_link($listing),
             '%WALKSCORECODE%' => $this->get_walkscore_code($listing),
             '%WPBLOG%' => get_site_url(),
@@ -1856,7 +1855,6 @@ class Shift8_TREB_Post_Manager {
     <div class="treb-contact-section">
         <div class="treb-contact-info">
             <h3>Contact Information</h3>
-            <p>%PHONEMSG%</p>
         </div>
     </div>
 </div>
@@ -2030,16 +2028,6 @@ class Shift8_TREB_Post_Manager {
         return $parts;
     }
 
-    /**
-     * Get phone message for contact
-     *
-     * @since 1.0.0
-     * @return string Phone message
-     */
-    private function get_phone_message() {
-        // This could be configurable in settings later
-        return 'Call for more information: (416) 555-0123';
-    }
 
     /**
      * Get virtual tour link for listing
@@ -2263,6 +2251,10 @@ var ws_height = '300';
         
         // Remove apartment/unit designations that can confuse geocoding
         $address = preg_replace('/\s+(BSMT|MAIN|UPPER|LOWER|APT\s*\d+|UNIT\s*\d+|#\d+)\s*,?/i', '', $address);
+        
+        // Remove unit numbers that appear directly after street names (common TREB format)
+        // e.g., "55 East Liberty Street 1210" -> "55 East Liberty Street"
+        $address = preg_replace('/(\b(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Boulevard|Blvd|Crescent|Cres|Circle|Cir|Court|Ct|Lane|Ln|Way|Place|Pl)\s+)\d+/i', '$1', $address);
         
         // Ensure we have Canada for better results
         if (!preg_match('/,\s*(Canada|CA)\s*$/i', $address)) {

@@ -287,7 +287,6 @@ $sync_status = array(
                                             <ul>
                                                 <li><code>%VIRTUALTOUR%</code> - <?php esc_html_e('Virtual tour link', 'shift8-treb'); ?></li>
                                                 <li><code>%VIRTUAL_TOUR_SECTION%</code> - <?php esc_html_e('Formatted virtual tour section', 'shift8-treb'); ?></li>
-                                                <li><code>%PHONEMSG%</code> - <?php esc_html_e('Contact phone message', 'shift8-treb'); ?></li>
                                                 <li><code>%WALKSCORECODE%</code> - <?php esc_html_e('WalkScore integration code', 'shift8-treb'); ?></li>
                                                 <li><code>%GOOGLEMAPCODE%</code> - <?php esc_html_e('Google Maps widget (requires API key)', 'shift8-treb'); ?></li>
                                                 <li><code>%WPBLOG%</code> - <?php esc_html_e('WordPress site URL', 'shift8-treb'); ?></li>
