@@ -4,7 +4,7 @@ Tags: real estate, listings, treb, ampre, mls
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.5.0
+Stable tag: 1.6.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -23,6 +23,7 @@ Shift8 TREB Real Estate Listings is a comprehensive WordPress plugin that automa
 * **Google Maps Integration** - Interactive maps with free OpenStreetMap geocoding and conditional display
 * **WalkScore Integration** - Walkability scoring for properties
 * **Member-Based Categorization** - Automatic categorization based on agent membership
+* **Sold Listing Management** - Automatically updates existing listings to sold status with title prefix and tags
 * **WP-CLI Support** - Full command-line interface for server management
 * **Comprehensive Logging** - Detailed logging system with admin interface
 
@@ -91,6 +92,16 @@ The plugin is designed for single-site installations. Multisite compatibility is
 
 == Changelog ==
 
+= 1.6.0 =
+* Sold Listing Management: Intelligent handling of sold/closed listings with automatic status updates
+* Automatically detects sold listings using ContractStatus and StandardStatus fields from AMPRE API
+* Updates existing listings to sold status with "(SOLD)" title prefix for clear identification
+* Adds "Sold" tag to sold listings for easy filtering and categorization
+* Skips importing new sold listings (only updates existing ones to sold status)
+* Comprehensive logging of sold listing status changes for audit trail
+* Enhanced test coverage with 5 new tests for sold listing functionality
+* API filter inclusion for sold/closed listings to ensure status detection
+
 = 1.5.0 =
 * OpenStreetMap Rate Limiting Compliance: Strict 1-request-per-second enforcement to prevent API abuse
 * Enhanced Address Geocoding: Multiple fallback strategies with intelligent unit number removal for TREB addresses
@@ -146,6 +157,9 @@ The plugin is designed for single-site installations. Multisite compatibility is
 * Automated synchronization
 
 == Upgrade Notice ==
+
+= 1.6.0 =
+New feature: Sold listing management automatically updates existing listings to sold status with clear identification. Enhanced API integration now includes sold/closed listings for proper status tracking.
 
 = 1.5.0 =
 Critical update: Implements OpenStreetMap rate limiting compliance to prevent API abuse and IP blocking. Enhanced geocoding accuracy with multiple fallback strategies. Comprehensive test coverage expansion ensures reliability.

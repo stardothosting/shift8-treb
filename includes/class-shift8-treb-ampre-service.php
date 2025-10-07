@@ -188,8 +188,9 @@ class Shift8_TREB_AMPRE_Service {
         // Add filters based on settings
         $filters = array();
 
-        // Use ContractStatus instead of StandardStatus for available listings
-        $filters[] = "ContractStatus eq 'Available'";
+        // Include both available and sold listings for processing
+        // Available listings for new imports, sold listings for status updates
+        $filters[] = "(ContractStatus eq 'Available' or ContractStatus eq 'Sold' or ContractStatus eq 'Closed')";
         
         // Add ModificationTimestamp filter for incremental sync
         if (!empty($this->settings['last_sync_timestamp'])) {

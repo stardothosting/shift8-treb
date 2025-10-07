@@ -645,9 +645,9 @@ class AMPREServiceTest extends TestCase {
         
         $query_params = $method->invoke($ampre_service);
         
-        // Should contain single member ID filter without OR logic
+        // Should contain single member ID filter without OR logic for member IDs specifically
         $this->assertStringContainsString('ListAgentKey eq \'2229166\'', $query_params, 'Should filter for single member ID');
-        $this->assertStringNotContainsString(' or ', $query_params, 'Should not use OR logic for single member ID');
+        $this->assertStringNotContainsString('ListAgentKey eq \'2229166\' or ListAgentKey', $query_params, 'Should not use OR logic for single member ID');
     }
 
     /**
@@ -705,6 +705,31 @@ class AMPREServiceTest extends TestCase {
         $this->assertStringContainsString('ModificationTimestamp ge 2023-12-01T10:00:00Z', $query_params, 'Should include timestamp filter');
         $this->assertStringContainsString('ListAgentKey eq \'2229166\'', $query_params, 'Should include member ID filter');
         $this->assertStringContainsString(' and ', $query_params, 'Should combine filters with AND logic');
+    }
+
+    /**
+     * Test API filter includes sold listings for status updates
+     */
+    public function test_api_filter_includes_sold_listings() {
+        // Test that API filter includes both available and sold listings
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30
+        );
+
+        $ampre_service = new \Shift8_TREB_AMPRE_Service($settings);
+        
+        $reflection = new \ReflectionClass($ampre_service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+        
+        $query_params = $method->invoke($ampre_service);
+        
+        // Should include available, sold, and closed listings
+        $this->assertStringContainsString('ContractStatus eq \'Available\'', $query_params, 'Should include available listings');
+        $this->assertStringContainsString('ContractStatus eq \'Sold\'', $query_params, 'Should include sold listings');
+        $this->assertStringContainsString('ContractStatus eq \'Closed\'', $query_params, 'Should include closed listings');
+        $this->assertStringContainsString(' or ', $query_params, 'Should use OR logic for status values');
     }
 
 }

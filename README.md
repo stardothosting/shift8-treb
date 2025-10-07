@@ -32,6 +32,7 @@ This plugin replaces manual listing management by automatically fetching propert
 - Featured image assignment with intelligent priority (first image or preferred photo)
 - Proper post_parent linking for all media attachments
 - Dynamic categorization (Listings/OtherListings) based on agent membership
+- **Sold listing management** - automatically updates existing listings to sold status with title prefix and tags
 - SEO-friendly post structure with proper excerpts and metadata
 
 ### Administrative Interface
@@ -288,7 +289,20 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.5.0 (Current)
+### Version 1.6.0 (Current)
+- **🏷️ Sold Listing Management**: Intelligent handling of sold/closed listings
+  - Automatically detects sold listings using ContractStatus and StandardStatus fields
+  - Updates existing listings to sold status with "(SOLD)" title prefix
+  - Adds "Sold" tag to sold listings for easy filtering
+  - Skips importing new sold listings (only updates existing ones)
+  - Comprehensive logging of sold listing status changes
+- **🧪 Enhanced Test Coverage**: Added 5 new tests for sold listing functionality
+  - Sold listing detection from API responses
+  - Post sold status detection and validation
+  - Complete sold listing workflow testing
+  - API filter inclusion for sold/closed listings
+
+### Version 1.5.0
 - **🛡️ OpenStreetMap Rate Limiting Compliance**: Comprehensive implementation to prevent API abuse
   - Strict 1-request-per-second rate limiting using WordPress transients
   - Automatic sleep() enforcement with detailed logging

@@ -896,6 +896,218 @@ class PostManagerTest extends TestCase {
     }
 
     /**
+     * Test sold listing detection
+     */
+    public function test_sold_listing_detection() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('is_listing_sold');
+        $method->setAccessible(true);
+
+        // Test ContractStatus = 'Sold'
+        $sold_listing_contract = array(
+            'ContractStatus' => 'Sold',
+            'StandardStatus' => 'Active'
+        );
+        $this->assertTrue($method->invoke($post_manager, $sold_listing_contract), 'Should detect ContractStatus = Sold');
+
+        // Test ContractStatus = 'Closed'
+        $closed_listing_contract = array(
+            'ContractStatus' => 'Closed',
+            'StandardStatus' => 'Active'
+        );
+        $this->assertTrue($method->invoke($post_manager, $closed_listing_contract), 'Should detect ContractStatus = Closed');
+
+        // Test StandardStatus = 'Sold' (fallback)
+        $sold_listing_standard = array(
+            'ContractStatus' => 'Available',
+            'StandardStatus' => 'Sold'
+        );
+        $this->assertTrue($method->invoke($post_manager, $sold_listing_standard), 'Should detect StandardStatus = Sold');
+
+        // Test case insensitive
+        $sold_listing_case = array(
+            'ContractStatus' => 'SOLD',
+            'StandardStatus' => 'Active'
+        );
+        $this->assertTrue($method->invoke($post_manager, $sold_listing_case), 'Should be case insensitive');
+
+        // Test available listing
+        $available_listing = array(
+            'ContractStatus' => 'Available',
+            'StandardStatus' => 'Active'
+        );
+        $this->assertFalse($method->invoke($post_manager, $available_listing), 'Should not detect available listing as sold');
+
+        // Test missing status fields
+        $empty_listing = array();
+        $this->assertFalse($method->invoke($post_manager, $empty_listing), 'Should handle missing status fields');
+    }
+
+    /**
+     * Test post already marked as sold detection
+     */
+    public function test_post_marked_as_sold_detection() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('is_post_marked_as_sold');
+        $method->setAccessible(true);
+
+        // Mock get_post to return post with (SOLD) in title
+        Functions\when('get_post')->alias(function($post_id) {
+            if ($post_id === 123) {
+                return (object) array(
+                    'ID' => 123,
+                    'post_title' => '(SOLD) 123 Main Street, Toronto, ON'
+                );
+            }
+            if ($post_id === 456) {
+                return (object) array(
+                    'ID' => 456,
+                    'post_title' => '456 Oak Avenue, Toronto, ON'
+                );
+            }
+            return null;
+        });
+
+        // Mock wp_get_post_tags
+        Functions\when('wp_get_post_tags')->alias(function($post_id, $args) {
+            if ($post_id === 456 && isset($args['fields']) && $args['fields'] === 'names') {
+                return array('Sold', 'Listings');
+            }
+            if ($post_id === 789 && isset($args['fields']) && $args['fields'] === 'names') {
+                return array('Listings');
+            }
+            return array();
+        });
+
+        // Test post with (SOLD) in title
+        $this->assertTrue($method->invoke($post_manager, 123), 'Should detect (SOLD) in title');
+
+        // Test post with Sold tag
+        $this->assertTrue($method->invoke($post_manager, 456), 'Should detect Sold tag');
+
+        // Test post without sold indicators
+        $this->assertFalse($method->invoke($post_manager, 789), 'Should not detect unsold post');
+
+        // Test non-existent post
+        $this->assertFalse($method->invoke($post_manager, 999), 'Should handle non-existent post');
+    }
+
+    /**
+     * Test sold listing update handling
+     */
+    public function test_sold_listing_update_handling() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        $reflection = new \ReflectionClass($post_manager);
+        $method = $reflection->getMethod('handle_sold_listing_update');
+        $method->setAccessible(true);
+
+        // Mock get_post
+        Functions\when('get_post')->alias(function($post_id) {
+            if ($post_id === 123) {
+                return (object) array(
+                    'ID' => 123,
+                    'post_title' => '123 Main Street, Toronto, ON'
+                );
+            }
+            return null;
+        });
+
+        // Mock wp_update_post
+        Functions\when('wp_update_post')->justReturn(123);
+        Functions\when('is_wp_error')->justReturn(false);
+
+        // Mock wp_set_post_tags
+        Functions\when('wp_set_post_tags')->justReturn(true);
+
+        // Mock wp_get_post_tags for is_post_marked_as_sold check
+        Functions\when('wp_get_post_tags')->justReturn(array());
+
+        $listing_data = array(
+            'ListingKey' => 'X12345678',
+            'UnparsedAddress' => '123 Main Street, Toronto, ON',
+            'ContractStatus' => 'Sold'
+        );
+
+        $result = $method->invoke($post_manager, 123, $listing_data);
+        
+        $this->assertTrue($result, 'Should successfully handle sold listing update');
+    }
+
+    /**
+     * Test complete sold listing workflow
+     */
+    public function test_sold_listing_workflow() {
+        $settings = array();
+        $post_manager = new \Shift8_TREB_Post_Manager($settings);
+
+        // Mock existing post lookup
+        Functions\when('get_posts')->alias(function($args) {
+            if (isset($args['meta_value']) && $args['meta_value'] === 'X12345678') {
+                return array(123); // Return existing post ID
+            }
+            return array();
+        });
+
+        // Mock get_post for the existing post
+        Functions\when('get_post')->alias(function($post_id) {
+            if ($post_id === 123) {
+                return (object) array(
+                    'ID' => 123,
+                    'post_title' => '123 Main Street, Toronto, ON'
+                );
+            }
+            return null;
+        });
+
+        // Mock WordPress functions for sold listing update
+        Functions\when('wp_update_post')->justReturn(123);
+        Functions\when('wp_set_post_tags')->justReturn(true);
+        Functions\when('wp_get_post_tags')->justReturn(array()); // Not already sold
+        Functions\when('update_post_meta')->justReturn(true);
+
+        // Test existing listing being marked as sold
+        $sold_listing = array(
+            'ListingKey' => 'X12345678',
+            'UnparsedAddress' => '123 Main Street, Toronto, ON',
+            'ListPrice' => 750000,
+            'ContractStatus' => 'Sold'
+        );
+
+        $result = $post_manager->process_listing($sold_listing);
+
+        $this->assertIsArray($result, 'Should return result array');
+        $this->assertTrue($result['success'], 'Should be successful');
+        $this->assertEquals('marked_sold', $result['action'], 'Should indicate listing was marked as sold');
+        $this->assertEquals(123, $result['post_id'], 'Should return correct post ID');
+
+        // Test new sold listing being skipped
+        Functions\when('get_posts')->justReturn(array()); // No existing post
+
+        $new_sold_listing = array(
+            'ListingKey' => 'Y87654321',
+            'UnparsedAddress' => '456 Oak Avenue, Toronto, ON',
+            'ListPrice' => 850000,
+            'ContractStatus' => 'Sold'
+        );
+
+        $result = $post_manager->process_listing($new_sold_listing);
+
+        $this->assertIsArray($result, 'Should return result array');
+        $this->assertFalse($result['success'], 'Should not be successful for new sold listing');
+        $this->assertEquals('skipped', $result['action'], 'Should indicate listing was skipped');
+        $this->assertNull($result['post_id'], 'Should not have post ID');
+        $this->assertEquals('Sold listing - not importing new', $result['reason'], 'Should have correct skip reason');
+    }
+
+    /**
      * Test unlimited image processing (no limit)
      */
     public function test_unlimited_image_processing() {

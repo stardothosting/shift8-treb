@@ -73,44 +73,82 @@ class Shift8_TREB_Post_Manager {
                 'mls_number' => esc_html($mls_number)
             ));
 
+            // Check if listing is sold
+            $is_sold = $this->is_listing_sold($listing);
+            
             // Check if post already exists
             $existing_post_id = $this->get_existing_listing_id($mls_number);
             if ($existing_post_id) {
-                // Update existing listing instead of skipping
-                shift8_treb_log('Listing already exists, updating', array(
-                    'mls_number' => esc_html($mls_number),
-                    'existing_post_id' => $existing_post_id
-                ));
-                
-                $post_id = $this->update_listing_post($existing_post_id, $listing);
-                if (!$post_id) {
-                    return false;
-                }
-                
-                // Update MLS number meta
-                update_post_meta($post_id, 'listing_mls_number', sanitize_text_field($listing['ListingKey']));
-                
-                // Update comprehensive listing data as custom meta fields
-                $this->store_listing_meta_fields($post_id, $listing);
-                
-                // Process listing images (same as create path)
-                $image_stats = $this->process_listing_images($post_id, $listing);
+                if ($is_sold) {
+                    // Handle sold listing update
+                    $this->handle_sold_listing_update($existing_post_id, $listing);
+                    
+                    shift8_treb_log('Listing marked as sold', array(
+                        'post_id' => $existing_post_id,
+                        'mls_number' => esc_html($mls_number)
+                    ));
+                    
+                    return array(
+                        'success' => true,
+                        'action' => 'marked_sold',
+                        'post_id' => $existing_post_id,
+                        'title' => sanitize_text_field($listing['UnparsedAddress']),
+                        'mls_number' => $mls_number
+                    );
+                } else {
+                    // Update existing available listing
+                    shift8_treb_log('Listing already exists, updating', array(
+                        'mls_number' => esc_html($mls_number),
+                        'existing_post_id' => $existing_post_id
+                    ));
+                    
+                    $post_id = $this->update_listing_post($existing_post_id, $listing);
+                    if (!$post_id) {
+                        return false;
+                    }
+                    
+                    // Update MLS number meta
+                    update_post_meta($post_id, 'listing_mls_number', sanitize_text_field($listing['ListingKey']));
+                    
+                    // Update comprehensive listing data as custom meta fields
+                    $this->store_listing_meta_fields($post_id, $listing);
+                    
+                    // Process listing images (same as create path)
+                    $image_stats = $this->process_listing_images($post_id, $listing);
 
-                // Update post content with actual image HTML after processing
-                $this->update_post_content_with_images($post_id);
-                
-                shift8_treb_log('Listing updated successfully', array(
-                    'post_id' => $post_id,
+                    // Update post content with actual image HTML after processing
+                    $this->update_post_content_with_images($post_id);
+                    
+                    shift8_treb_log('Listing updated successfully', array(
+                        'post_id' => $post_id,
+                        'mls_number' => esc_html($mls_number),
+                        'image_stats' => $image_stats
+                    ));
+                    
+                    return array(
+                        'success' => true,
+                        'action' => 'updated',
+                        'post_id' => $post_id,
+                        'title' => sanitize_text_field($listing['UnparsedAddress']),
+                        'mls_number' => $mls_number
+                    );
+                }
+            }
+
+            // Skip importing new sold listings (we only update existing ones to sold status)
+            if ($is_sold) {
+                shift8_treb_log('Skipping new sold listing', array(
                     'mls_number' => esc_html($mls_number),
-                    'image_stats' => $image_stats
+                    'reason' => 'Already sold, not importing new'
                 ));
                 
                 return array(
-                    'success' => true,
-                    'action' => 'updated',
-                    'post_id' => $post_id,
+                    'success' => false,
+                    'action' => 'skipped',
+                    'post_id' => null,
                     'title' => sanitize_text_field($listing['UnparsedAddress']),
-                    'mls_number' => $mls_number
+                    'mls_number' => $mls_number,
+                    'reason' => 'Sold listing - not importing new'
                 );
             }
 
@@ -200,6 +238,125 @@ class Shift8_TREB_Post_Manager {
         ));
 
         return !empty($existing_posts) ? $existing_posts[0] : false;
+    }
+
+    /**
+     * Check if a listing is sold based on API data
+     *
+     * @since 1.5.1
+     * @param array $listing Listing data from AMPRE API
+     * @return bool True if listing is sold
+     */
+    private function is_listing_sold($listing) {
+        // Check ContractStatus for sold indicators
+        $contract_status = isset($listing['ContractStatus']) ? strtolower(trim($listing['ContractStatus'])) : '';
+        if (in_array($contract_status, array('sold', 'closed'), true)) {
+            return true;
+        }
+
+        // Check StandardStatus as fallback
+        $standard_status = isset($listing['StandardStatus']) ? strtolower(trim($listing['StandardStatus'])) : '';
+        if (in_array($standard_status, array('sold', 'closed'), true)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Handle updating an existing listing to sold status
+     *
+     * @since 1.5.1
+     * @param int $post_id Existing post ID
+     * @param array $listing Listing data from AMPRE API
+     * @return bool True on success
+     */
+    private function handle_sold_listing_update($post_id, $listing) {
+        try {
+            // Get current post data
+            $post = get_post($post_id);
+            if (!$post) {
+                return false;
+            }
+
+            // Check if already marked as sold (avoid duplicate processing)
+            if ($this->is_post_marked_as_sold($post_id)) {
+                shift8_treb_log('Post already marked as sold', array(
+                    'post_id' => $post_id,
+                    'mls_number' => esc_html($listing['ListingKey'] ?? 'unknown')
+                ));
+                return true;
+            }
+
+            // Update title to include (SOLD) prefix
+            $current_title = $post->post_title;
+            $new_title = '(SOLD) ' . $current_title;
+
+            // Update the post
+            $updated_post = array(
+                'ID' => $post_id,
+                'post_title' => sanitize_text_field($new_title)
+            );
+
+            $result = wp_update_post($updated_post);
+            if (is_wp_error($result)) {
+                shift8_treb_log('Failed to update sold listing title', array(
+                    'post_id' => $post_id,
+                    'error' => $result->get_error_message()
+                ));
+                return false;
+            }
+
+            // Add "Sold" tag
+            wp_set_post_tags($post_id, array('Sold'), true); // true = append to existing tags
+
+            // Update listing meta fields with sold status
+            $this->store_listing_meta_fields($post_id, $listing);
+
+            shift8_treb_log('Successfully marked listing as sold', array(
+                'post_id' => $post_id,
+                'old_title' => esc_html($current_title),
+                'new_title' => esc_html($new_title),
+                'mls_number' => esc_html($listing['ListingKey'] ?? 'unknown')
+            ));
+
+            return true;
+
+        } catch (Exception $e) {
+            shift8_treb_log('Error handling sold listing update', array(
+                'post_id' => $post_id,
+                'error' => esc_html($e->getMessage()),
+                'mls_number' => esc_html($listing['ListingKey'] ?? 'unknown')
+            ));
+            return false;
+        }
+    }
+
+    /**
+     * Check if a post is already marked as sold
+     *
+     * @since 1.5.1
+     * @param int $post_id Post ID
+     * @return bool True if already marked as sold
+     */
+    private function is_post_marked_as_sold($post_id) {
+        $post = get_post($post_id);
+        if (!$post) {
+            return false;
+        }
+
+        // Check if title already contains (SOLD)
+        if (strpos($post->post_title, '(SOLD)') !== false) {
+            return true;
+        }
+
+        // Check if post has "Sold" tag
+        $tags = wp_get_post_tags($post_id, array('fields' => 'names'));
+        if (in_array('Sold', $tags, true)) {
+            return true;
+        }
+
+        return false;
     }
 
 

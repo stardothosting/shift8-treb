@@ -3,7 +3,7 @@
  * Plugin Name: Shift8 TREB Real Estate Listings
  * Plugin URI: https://github.com/stardothosting/shift8-treb
  * Description: Integrates Toronto Real Estate Board (TREB) listings via AMPRE API, automatically importing property listings into WordPress. Replaces the Python script with native WordPress functionality.
- * Version: 1.5.0
+ * Version: 1.6.0
  * Author: Shift8 Web
  * Author URI: https://shift8web.ca
  * Text Domain: shift8-treb
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('SHIFT8_TREB_VERSION', '1.5.0');
+define('SHIFT8_TREB_VERSION', '1.6.0');
 define('SHIFT8_TREB_PLUGIN_FILE', __FILE__);
 define('SHIFT8_TREB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('SHIFT8_TREB_PLUGIN_URL', plugin_dir_url(__FILE__));
