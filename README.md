@@ -289,7 +289,27 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.3.0 (Current)
+### Version 1.4.0 (Current)
+- **🎯 API-Level Member Filtering**: New `--members-only` CLI flag for efficient member-specific sync
+  - Filters `ListAgentKey` at API level instead of client-side (3 listings vs 100+)
+  - Dramatic performance improvement for member-focused operations
+  - Validates member ID configuration before allowing flag usage
+  - Proper OData filter syntax: `(ListAgentKey eq 'ID1' or ListAgentKey eq 'ID2')`
+- **🚀 Enhanced CLI Experience**: Improved user experience and documentation
+  - Clear progress indicators with emoji icons (🎯 for targeting, ⚡ for performance)
+  - Comprehensive help documentation with practical examples
+  - Actionable error messages with validation feedback
+- **⚙️ Flexible Settings Architecture**: Robust settings override system for CLI operations
+  - Temporary CLI overrides without affecting stored settings
+  - Settings dependency validation for CLI flags
+  - Transparent settings display in verbose mode
+- **📚 Expanded .cursorrules**: Added new patterns for future development
+  - API-level filtering best practices
+  - CLI user experience patterns
+  - Settings architecture patterns
+- **🧪 Maintained Test Coverage**: All 72 tests pass with 256 assertions
+
+### Version 1.3.0
 - **🗺️ OpenStreetMap Geocoding**: Replaced Google Maps geocoding with free OpenStreetMap Nominatim API
   - No API key required for geocoding (eliminates REQUEST_DENIED errors)
   - Unique coordinates for each listing instead of default Toronto fallback

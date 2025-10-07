@@ -1218,5 +1218,93 @@
             "bulkOperations": "Process multiple attachments in batches to reduce database queries",
             "indexing": "Ensure custom meta fields used in queries are properly indexed"
         }
+    },
+    "apiLevelFilteringPatterns": {
+        "description": "Best practices for implementing API-level filtering for performance optimization",
+        "serverSideFiltering": {
+            "rule": "Always prefer server-side filtering over client-side filtering for external APIs",
+            "rationale": "Reduces bandwidth, improves performance, and minimizes processing overhead",
+            "implementation": "Add filter parameters to API query strings instead of filtering results locally",
+            "example": "Use ListAgentKey eq 'ID' in OData $filter instead of array_filter() on results"
+        },
+        "cliFilterFlags": {
+            "rule": "Provide CLI flags for common filtering scenarios to improve developer experience",
+            "pattern": "Add --{filter-type}-only flags for frequently used filters",
+            "validation": "Always validate required settings are configured before applying filters",
+            "feedback": "Provide clear CLI output showing what filtering is being applied",
+            "examples": {
+                "membersOnly": "--members-only flag filters ListAgentKey at API level",
+                "statusFilter": "--active-only could filter ContractStatus at API level",
+                "dateFilter": "--recent-only could filter ModificationTimestamp at API level"
+            }
+        },
+        "odataFilterSyntax": {
+            "rule": "Follow OData filter syntax exactly for external API compatibility",
+            "multipleValues": "Use (field eq 'value1' or field eq 'value2') for multiple values",
+            "sanitization": "Always sanitize filter values with sanitize_text_field()",
+            "testing": "Test filter syntax with curl before implementing in code",
+            "documentation": "Document filter syntax in CLI help and code comments"
+        },
+        "performanceMetrics": {
+            "rule": "Measure and communicate performance improvements from API-level filtering",
+            "measurement": "Compare result counts before and after filtering (e.g., 3 vs 100+ listings)",
+            "communication": "Show performance benefits in CLI output and documentation",
+            "monitoring": "Log filter effectiveness for optimization insights"
+        }
+    },
+    "cliUserExperiencePatterns": {
+        "description": "Patterns for creating intuitive and helpful CLI commands",
+        "flagNaming": {
+            "rule": "Use descriptive, intuitive flag names that clearly indicate their purpose",
+            "pattern": "--{purpose}-only for filtering flags, --{action} for action flags",
+            "consistency": "Maintain consistent naming patterns across all commands",
+            "examples": {
+                "good": "--members-only, --dry-run, --verbose, --skip-images",
+                "bad": "--filter, --test, --debug, --no-img"
+            }
+        },
+        "helpDocumentation": {
+            "rule": "Provide comprehensive help documentation with practical examples",
+            "structure": "Include description, options with explanations, and real-world examples",
+            "examples": "Show common use cases and flag combinations",
+            "validation": "Document prerequisites and error conditions"
+        },
+        "progressFeedback": {
+            "rule": "Provide clear progress indicators and status messages for long-running operations",
+            "immediate": "Show configuration and mode selection immediately",
+            "progress": "Display progress for operations that take time",
+            "results": "Summarize results with counts and success/failure indicators",
+            "icons": "Use emoji icons for visual clarity (🎯 for targeting, ⚡ for performance, ✅ for success)"
+        },
+        "errorHandling": {
+            "rule": "Provide actionable error messages with clear next steps",
+            "validation": "Validate prerequisites before starting operations",
+            "messages": "Explain what went wrong and how to fix it",
+            "examples": "Show correct usage when validation fails"
+        }
+    },
+    "settingsArchitecturePatterns": {
+        "description": "Patterns for flexible settings architecture that supports CLI overrides",
+        "overridePattern": {
+            "rule": "Design settings system to support temporary CLI overrides without affecting stored settings",
+            "implementation": "Use settings_overrides array that gets merged with base settings",
+            "preservation": "Never modify stored settings from CLI operations",
+            "flexibility": "Allow CLI to override any setting temporarily for testing and debugging"
+        },
+        "settingsValidation": {
+            "rule": "Validate settings dependencies when CLI flags are used",
+            "dependencies": "Check that required settings exist before allowing dependent flags",
+            "examples": {
+                "membersOnly": "Validate member_id is configured before allowing --members-only",
+                "apiOperations": "Validate bearer_token before allowing API operations"
+            },
+            "feedback": "Provide clear error messages when dependencies are missing"
+        },
+        "settingsTransparency": {
+            "rule": "Make CLI settings overrides visible to users for debugging",
+            "display": "Show effective settings when --verbose flag is used",
+            "highlighting": "Clearly indicate which settings are overridden vs stored",
+            "debugging": "Help users understand why certain behavior is occurring"
+        }
     }
 }
