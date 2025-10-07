@@ -64,15 +64,12 @@ class PostManagerTest extends TestCase {
         Functions\when('get_transient')->justReturn(false); // Always return false to skip cache
         Functions\when('set_transient')->justReturn(true);
         Functions\when('get_option')->justReturn(array('debug_enabled' => '0'));
-        Functions\when('wp_kses_post')->alias(function($content) { return strip_tags($content); });
+        Functions\when('wp_kses_post')->alias(function($content) { return $content; }); // Allow HTML in tests
         Functions\when('get_category_by_slug')->justReturn(false);
         
         // Mock WP_CLI for CLI output in tests
         if (!defined('WP_CLI')) {
             define('WP_CLI', true);
-        }
-        if (!class_exists('WP_CLI')) {
-            eval('class WP_CLI { public static function line($message) {} }');
         }
         Functions\when('current_time')->justReturn(date('Y-m-d H:i:s'));
         Functions\when('wp_upload_bits')->justReturn(array(
@@ -98,6 +95,7 @@ class PostManagerTest extends TestCase {
         Functions\when('wp_remote_retrieve_response_code')->justReturn(200);
         Functions\when('wp_remote_retrieve_body')->justReturn('fake_image_data');
         Functions\when('is_wp_error')->justReturn(false);
+        Functions\when('get_site_url')->justReturn('https://example.com');
         Functions\when('wp_check_filetype')->justReturn(array(
             'ext' => 'jpg',
             'type' => 'image/jpeg'

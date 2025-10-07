@@ -4,7 +4,7 @@ Tags: real estate, listings, treb, ampre, mls
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.6.0
+Stable tag: 1.6.1
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -92,6 +92,13 @@ The plugin is designed for single-site installations. Multisite compatibility is
 
 == Changelog ==
 
+= 1.6.1 =
+* Post Excerpt Template: Added customizable template system for post excerpts with full placeholder support
+* HTML Support: Both listing template and excerpt template now preserve HTML formatting (using wp_kses_post sanitization)
+* Enhanced Admin Interface: Excerpt template field positioned logically below listing template with shared placeholder documentation
+* Improved Template Processing: Consistent placeholder replacement system across both content and excerpt templates
+* Better User Experience: Templates now support rich formatting while maintaining WordPress security standards
+
 = 1.6.0 =
 * Sold Listing Management: Intelligent handling of sold/closed listings with automatic status updates
 * Automatically detects sold listings using ContractStatus and StandardStatus fields from AMPRE API
@@ -157,6 +164,9 @@ The plugin is designed for single-site installations. Multisite compatibility is
 * Automated synchronization
 
 == Upgrade Notice ==
+
+= 1.6.1 =
+New feature: Customizable post excerpt templates with full HTML support and placeholder system. Enhanced template processing for better formatting control.
 
 = 1.6.0 =
 New feature: Sold listing management automatically updates existing listings to sold status with clear identification. Enhanced API integration now includes sold/closed listings for proper status tracking.

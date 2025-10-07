@@ -3,7 +3,7 @@
  * Plugin Name: Shift8 TREB Real Estate Listings
  * Plugin URI: https://github.com/stardothosting/shift8-treb
  * Description: Integrates Toronto Real Estate Board (TREB) listings via AMPRE API, automatically importing property listings into WordPress. Replaces the Python script with native WordPress functionality.
- * Version: 1.6.0
+ * Version: 1.6.1
  * Author: Shift8 Web
  * Author URI: https://shift8web.ca
  * Text Domain: shift8-treb
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('SHIFT8_TREB_VERSION', '1.6.0');
+define('SHIFT8_TREB_VERSION', '1.6.1');
 define('SHIFT8_TREB_PLUGIN_FILE', __FILE__);
 define('SHIFT8_TREB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('SHIFT8_TREB_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -251,7 +251,8 @@ class Shift8_TREB {
                     'member_id' => '',
                     'excluded_member_ids' => '',
                     'listing_age_days' => '30',
-                    'listing_template' => 'Property Details:\n\nAddress: %ADDRESS%\nPrice: %PRICE%\nMLS: %MLS%\nBedrooms: %BEDROOMS%\nBathrooms: %BATHROOMS%\nSquare Feet: %SQFT%\n\nDescription:\n%DESCRIPTION%'
+                    'listing_template' => 'Property Details:\n\nAddress: %ADDRESS%\nPrice: %PRICE%\nMLS: %MLS%\nBedrooms: %BEDROOMS%\nBathrooms: %BATHROOMS%\nSquare Feet: %SQFT%\n\nDescription:\n%DESCRIPTION%',
+                    'post_excerpt_template' => '%ADDRESS%\n%LISTPRICE%\nMLS : %MLSNUMBER%'
                 )
             )
         );
@@ -339,6 +340,10 @@ class Shift8_TREB {
         
         if (isset($input['listing_template'])) {
             $sanitized['listing_template'] = wp_kses_post($input['listing_template']);
+        }
+        
+        if (isset($input['post_excerpt_template'])) {
+            $sanitized['post_excerpt_template'] = wp_kses_post($input['post_excerpt_template']);
         }
         
         // Add success message

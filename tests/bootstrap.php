@@ -105,6 +105,10 @@ if (!class_exists('WP_CLI')) {
         public static function confirm($message) {
             return true;
         }
+        
+        public static function line($message) {
+            return true;
+        }
     }
 }
 

@@ -407,7 +407,7 @@ class Shift8_TREB_Post_Manager {
         // Prepare post data
         $post_title = sanitize_text_field($listing['UnparsedAddress']);
         $post_content = $this->generate_post_content($listing);
-        $post_excerpt = wp_trim_words(wp_strip_all_tags($listing['PublicRemarks'] ?? ''), 20);
+        $post_excerpt = $this->generate_post_excerpt($listing);
         $category_id = $this->get_listing_category_id($listing);
 
         $post_data = array(
@@ -610,20 +610,50 @@ class Shift8_TREB_Post_Manager {
      * @return string Post excerpt
      */
     private function generate_post_excerpt($listing) {
-        $address = sanitize_text_field($listing['UnparsedAddress']);
-        $price = '$' . number_format(intval($listing['ListPrice']));
-        $mls = sanitize_text_field($listing['ListingKey']);
+        // Get excerpt template from settings
+        $template = isset($this->settings['post_excerpt_template']) ? 
+            $this->settings['post_excerpt_template'] : 
+            '%ADDRESS%\n%LISTPRICE%\nMLS : %MLSNUMBER%';
 
-        return sprintf(
-            '<div class="listing-excerpt">
-                <div class="listing-address">%s</div>
-                <div class="listing-price">%s</div>
-                <div class="listing-mls">MLS: %s</div>
-            </div>',
-            esc_html($address),
-            esc_html($price),
-            esc_html($mls)
+        // Parse address components
+        $address_parts = $this->parse_address($listing['UnparsedAddress']);
+        
+        // Prepare replacement variables (same as main content template)
+        $replacements = array(
+            // Original placeholders (keep for backward compatibility)
+            '%ADDRESS%' => sanitize_text_field($listing['UnparsedAddress']),
+            '%PRICE%' => '$' . number_format(floatval($listing['ListPrice']), 2),
+            '%MLS%' => sanitize_text_field($listing['ListingKey']),
+            '%BEDROOMS%' => isset($listing['BedroomsTotal']) ? sanitize_text_field($listing['BedroomsTotal']) : 'N/A',
+            '%BATHROOMS%' => isset($listing['BathroomsTotal']) ? sanitize_text_field($listing['BathroomsTotal']) : 'N/A',
+            '%SQFT%' => isset($listing['LivingArea']) ? number_format(intval($listing['LivingArea'])) : 'N/A',
+            '%DESCRIPTION%' => isset($listing['PublicRemarks']) ? wp_kses_post($listing['PublicRemarks']) : '',
+            '%PROPERTY_TYPE%' => isset($listing['PropertyType']) ? sanitize_text_field($listing['PropertyType']) : 'N/A',
+            '%CITY%' => isset($listing['City']) ? sanitize_text_field($listing['City']) : '',
+            '%POSTAL_CODE%' => isset($listing['PostalCode']) ? sanitize_text_field($listing['PostalCode']) : '',
+            
+            // Template-specific placeholders (matching actual template usage)
+            '%MLSNUMBER%' => sanitize_text_field($listing['ListingKey']),
+            '%LISTPRICE%' => '$' . number_format(floatval($listing['ListPrice']), 2),
+            '%SQFOOTAGE%' => isset($listing['LivingArea']) ? number_format(intval($listing['LivingArea'])) : 'N/A',
+            '%STREETNUMBER%' => $address_parts['number'],
+            '%STREETNAME%' => $address_parts['street'],
+            '%APT_NUM%' => $address_parts['unit'],
+            
+            // Additional template placeholders (simplified for excerpt)
+            '%VIRTUALTOUR%' => $this->get_virtual_tour_link($listing),
+            '%WPBLOG%' => get_site_url(),
+            
+            // Coordinates (if available)
+            '%MAPLAT%' => $this->get_listing_latitude($listing),
+            '%MAPLNG%' => $this->get_listing_longitude($listing),
         );
+
+        // Replace placeholders in template
+        $excerpt = str_replace(array_keys($replacements), array_values($replacements), $template);
+        
+        // Allow HTML in excerpts - just sanitize with wp_kses_post to allow safe HTML
+        return wp_kses_post($excerpt);
     }
 
     /**

@@ -289,7 +289,22 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.6.0 (Current)
+### Version 1.6.1 (Current)
+- **📝 Post Excerpt Template System**: Customizable template for WordPress post excerpts
+  - Full placeholder support identical to main listing template
+  - HTML formatting support with wp_kses_post sanitization
+  - Positioned logically in admin interface below listing template
+  - Consistent template processing across content and excerpts
+- **🎨 Enhanced HTML Support**: Both templates now preserve HTML formatting
+  - Safe HTML tags allowed: `<p>`, `<br>`, `<strong>`, `<em>`, `<a>`, `<div>`, etc.
+  - WordPress security standards maintained with wp_kses_post
+  - Rich formatting capabilities for better content presentation
+- **🔧 Improved Template Processing**: Unified placeholder replacement system
+  - Consistent behavior between listing content and excerpt generation
+  - Better error handling and sanitization
+  - Enhanced user experience with logical field organization
+
+### Version 1.6.0
 - **🏷️ Sold Listing Management**: Intelligent handling of sold/closed listings
   - Automatically detects sold listings using ContractStatus and StandardStatus fields
   - Updates existing listings to sold status with "(SOLD)" title prefix

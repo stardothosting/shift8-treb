@@ -25,7 +25,8 @@ $settings = wp_parse_args(get_option('shift8_treb_settings', array()), array(
     'property_type_filter' => '',
     'min_price' => '0',
     'max_price' => '999999999',
-    'listing_template' => 'Property Details:\n\nAddress: %ADDRESS%\nPrice: %PRICE%\nMLS: %MLS%\nBedrooms: %BEDROOMS%\nBathrooms: %BATHROOMS%\nSquare Feet: %SQFT%\n\nDescription:\n%DESCRIPTION%'
+    'listing_template' => 'Property Details:\n\nAddress: %ADDRESS%\nPrice: %PRICE%\nMLS: %MLS%\nBedrooms: %BEDROOMS%\nBathrooms: %BATHROOMS%\nSquare Feet: %SQFT%\n\nDescription:\n%DESCRIPTION%',
+    'post_excerpt_template' => '%ADDRESS%\n%LISTPRICE%\nMLS : %MLSNUMBER%'
 ));
 
 // Get sync status
@@ -237,6 +238,29 @@ $sync_status = array(
                                           rows="10" 
                                           cols="50" 
                                           class="large-text"><?php echo esc_textarea($settings['listing_template']); ?></textarea>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="post_excerpt_template"><?php esc_html_e('Post Excerpt Template', 'shift8-treb'); ?></label>
+                            </th>
+                            <td>
+                                <textarea id="post_excerpt_template" 
+                                          name="shift8_treb_settings[post_excerpt_template]" 
+                                          rows="4" 
+                                          cols="50" 
+                                          class="large-text"><?php echo esc_textarea($settings['post_excerpt_template']); ?></textarea>
+                                <p class="description">
+                                    <?php esc_html_e('Template for the WordPress post excerpt. Uses the same placeholders as the listing template above. This will be displayed in post previews, search results, and theme excerpt areas.', 'shift8-treb'); ?>
+                                </p>
+                                <p class="description">
+                                    <strong><?php esc_html_e('Example:', 'shift8-treb'); ?></strong> 
+                                    <code>%ADDRESS%\n%LISTPRICE%\nMLS : %MLSNUMBER%</code>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td colspan="2">
                                 <div class="description">
                                     <p><strong><?php esc_html_e('Available Template Placeholders:', 'shift8-treb'); ?></strong></p>
                                     <div class="shift8-treb-placeholders">
@@ -344,6 +368,7 @@ $sync_status = array(
                                     }
                                 }
                                 </style>
+                                </div>
                             </td>
                         </tr>
                     </table>
