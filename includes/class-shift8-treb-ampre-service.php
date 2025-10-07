@@ -203,6 +203,18 @@ class Shift8_TREB_AMPRE_Service {
             }
         }
 
+        // Add member ID filter if members_only is enabled
+        if (!empty($this->settings['members_only']) && !empty($this->settings['member_id'])) {
+            $member_ids = array_map('trim', explode(',', $this->settings['member_id']));
+            if (!empty($member_ids)) {
+                $member_filters = array();
+                foreach ($member_ids as $member_id) {
+                    $member_filters[] = "ListAgentKey eq '" . sanitize_text_field($member_id) . "'";
+                }
+                $filters[] = '(' . implode(' or ', $member_filters) . ')';
+            }
+        }
+
         // Combine filters
         if (!empty($filters)) {
             $params[] = '$filter=' . implode(' and ', $filters);

@@ -41,6 +41,9 @@ class Shift8_TREB_CLI {
      * [--mls=<number>]
      * : Import specific MLS number(s) - comma separated (e.g. W12436591,C12380184)
      *
+     * [--members-only]
+     * : Sync only listings from configured member IDs (filters at API level for efficiency)
+     *
      * [--skip-images]
      * : Skip image downloads for faster sync (stores external URLs only)
      *
@@ -67,6 +70,9 @@ class Shift8_TREB_CLI {
      *     # Import specific MLS numbers
      *     wp shift8-treb sync --mls=W12436591,C12380184
      *
+     *     # Sync only member listings (much faster)
+     *     wp shift8-treb sync --members-only
+     *
      * @when after_wp_load
      */
     public function sync($args, $assoc_args) {
@@ -76,6 +82,7 @@ class Shift8_TREB_CLI {
         $force = isset($assoc_args['force']);
         $listing_age = isset($assoc_args['listing-age']) ? intval($assoc_args['listing-age']) : null;
         $mls_numbers = isset($assoc_args['mls']) ? $assoc_args['mls'] : null;
+        $members_only = isset($assoc_args['members-only']);
 
         WP_CLI::line('=== Shift8 TREB Manual Sync ===');
         
@@ -115,6 +122,17 @@ class Shift8_TREB_CLI {
                 if ($verbose) {
                     $listing_age_days = $base_settings['listing_age_days'] ?? 30;
                     WP_CLI::line("Using WordPress setting: {$listing_age_days} days (manual sync ignores incremental)");
+                }
+            }
+
+            // Enable members-only filtering if specified
+            if ($members_only) {
+                $settings_overrides['members_only'] = true;
+                WP_CLI::line("🎯 Members-only mode: Filtering at API level for configured member IDs");
+                
+                // Validate member IDs are configured
+                if (empty($base_settings['member_id'])) {
+                    WP_CLI::error('Member IDs not configured in settings. Cannot use --members-only flag.');
                 }
             }
 
