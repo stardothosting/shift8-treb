@@ -4,7 +4,7 @@ Tags: real estate, listings, treb, ampre, mls
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.6.1
+Stable tag: 1.6.2
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -92,6 +92,18 @@ The plugin is designed for single-site installations. Multisite compatibility is
 
 == Changelog ==
 
+= 1.6.2 =
+* Critical Bug Fixes: Comprehensive resolution of three major production issues
+* Duplicate Image Prevention: Enhanced detection handles WordPress -1.jpg suffixes with automatic cleanup
+* Geocoding Accuracy: Intelligent address cleaning preserves street name components (Upper/Lower/North/South/East/West)
+* Duplicate Post Prevention: Multi-layered detection with race condition protection and proactive cleanup
+* Comprehensive Test Coverage: 107 assertions covering diverse Toronto area addresses including condos, apartments, complex street names
+* Enhanced Reliability: Zero-tolerance testing approach with 97 tests passing (437 total assertions)
+* Performance Optimizations: Rate-limiting compliance, batch processing, enhanced error handling and debugging
+* Improved duplicate detection with fallback methods (meta → tags → title search)
+* Automatic attachment cleanup and orphaned image correction
+* Proactive duplicate post cleanup with attachment migration
+
 = 1.6.1 =
 * Post Excerpt Template: Added customizable template system for post excerpts with full placeholder support
 * HTML Support: Both listing template and excerpt template now preserve HTML formatting (using wp_kses_post sanitization)
@@ -164,6 +176,9 @@ The plugin is designed for single-site installations. Multisite compatibility is
 * Automated synchronization
 
 == Upgrade Notice ==
+
+= 1.6.2 =
+Critical update: Resolves three major production issues - duplicate images, geocoding failures, and duplicate posts. Enhanced reliability with comprehensive test coverage and zero-tolerance testing approach. Includes intelligent address cleaning and multi-layered duplicate detection.
 
 = 1.6.1 =
 New feature: Customizable post excerpt templates with full HTML support and placeholder system. Enhanced template processing for better formatting control.

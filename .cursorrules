@@ -1373,5 +1373,186 @@
             "batchProcessing": "Consider batching when APIs support it",
             "fallbacks": "Provide meaningful fallbacks when APIs are unavailable or rate limited"
         }
+    },
+    "criticalBugResolutionPatterns": {
+        "description": "Comprehensive patterns for resolving critical production issues learned from duplicate images, geocoding failures, and duplicate posts",
+        "duplicateImagePrevention": {
+            "rule": "Implement multi-layered duplicate image detection to handle WordPress automatic file renaming",
+            "primaryDetection": "Use meta-based lookup with _treb_mls_number and _treb_image_number",
+            "fallbackDetection": "Check for WordPress duplicate filenames (image-1.jpg, image-2.jpg) using _wp_attached_file meta",
+            "autoCleanup": "Automatically remove duplicate attachments and keep the first one",
+            "metaRepair": "Ensure proper meta fields are set on recovered attachments",
+            "logging": "Log all duplicate detection and cleanup operations for monitoring",
+            "implementation": {
+                "pattern": "First check by meta → fallback to filename pattern → cleanup duplicates → repair meta",
+                "example": "get_posts with meta_query for _wp_attached_file LIKE pattern, then wp_delete_attachment for duplicates"
+            }
+        },
+        "intelligentAddressCleaning": {
+            "rule": "Preserve street name components while removing apartment designations using context-aware regex",
+            "streetNamePreservation": "Never remove directional words (Upper/Lower/North/South/East/West) when part of street names",
+            "apartmentDesignationRemoval": "Only remove UPPER/LOWER when followed by comma or end of string, not when followed by street type words",
+            "contextAwareRegex": "Use negative lookahead to check if directional word is followed by street type (Street, Avenue, Drive, etc.)",
+            "multipleVariations": "Generate multiple address cleaning variations (aggressive, conservative, basic)",
+            "comprehensiveTesting": "Test with diverse real-world address patterns including condos, apartments, complex street names",
+            "implementation": {
+                "preservationPattern": "/\\s+(UPPER|LOWER)(?=\\s*,|\\s*$)(?!\\s+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|...))/i",
+                "testCoverage": "Include Toronto area codes, hyphenated streets, apostrophes, multiple directional words"
+            }
+        },
+        "robustDuplicatePostPrevention": {
+            "rule": "Implement multi-layered duplicate detection with race condition protection",
+            "primaryDetection": "Meta field lookup (listing_mls_number)",
+            "fallbackMethods": ["Tag-based detection for race conditions", "Title search with MLS verification", "Auto-repair missing meta/tags"],
+            "proactiveCleanup": "Clean up existing duplicates before creating new posts",
+            "attachmentMigration": "Move attachments from duplicate to primary post before deletion",
+            "immediateTagSetting": "Set MLS tags during wp_insert_post() to prevent race conditions",
+            "comprehensiveLogging": "Track all duplicate detection, cleanup, and repair operations",
+            "implementation": {
+                "detectionOrder": "get_posts by meta → get_posts by tag → get_posts by search → cleanup duplicates",
+                "raceConditionPrevention": "wp_set_post_tags immediately after wp_insert_post"
+            }
+        }
+    },
+    "comprehensiveTestingPatterns": {
+        "description": "Testing patterns for ensuring robust coverage and preventing regressions",
+        "zeroToleranceTestingPolicy": {
+            "rule": "ABSOLUTELY ZERO test failures are acceptable - every single test must pass",
+            "enforcement": "Fix ALL failures immediately, no exceptions or 'good enough' results",
+            "process": ["Run php -l syntax check", "Run composer test after every change", "Investigate and resolve each failure completely"],
+            "coverage": "Add tests for every bug fix to prevent future regressions"
+        },
+        "realWorldTestData": {
+            "rule": "Use comprehensive real-world data patterns in tests",
+            "addressTesting": "Include diverse Toronto area addresses: condos, apartments, complex street names, directional components",
+            "edgeCases": "Test hyphenated streets, apostrophes, multiple directional words, Toronto area codes (C01, C08)",
+            "apartmentPatterns": "Test APT, UNIT, BSMT, MAIN, UPPER, LOWER designations in various contexts",
+            "streetNameVariations": "Test Upper/Lower/North/South/East/West in different positions within street names"
+        },
+        "comprehensiveAssertions": {
+            "rule": "Design tests with extensive assertion coverage",
+            "multipleScenarios": "Test both positive (should_contain) and negative (should_not_contain) cases",
+            "detailedFailureMessages": "Include input data, expected results, and actual variations in failure messages",
+            "edgeCaseValidation": "Test boundary conditions and unusual but valid data patterns"
+        }
+    },
+    "productionIssueDebuggingPatterns": {
+        "description": "Systematic approaches for diagnosing and resolving production issues",
+        "issueAnalysisWorkflow": {
+            "rule": "Follow systematic investigation process for production issues",
+            "dataExamination": "Examine actual production data (wp post get, wp post meta list, wp post list)",
+            "logAnalysis": "Review sync logs for patterns and error messages",
+            "codeTracing": "Trace execution flow to identify where issues occur",
+            "testReproduction": "Create specific test cases that reproduce the production issue"
+        },
+        "evidenceGathering": {
+            "rule": "Collect comprehensive evidence before implementing fixes",
+            "examples": [
+                "Duplicate images: Check attachment post_parent relationships and filenames",
+                "Geocoding failures: Examine address cleaning variations and API responses", 
+                "Duplicate posts: Check MLS tags, meta fields, and creation timestamps"
+            ],
+            "toolUsage": "Use wp-cli commands to investigate database state and relationships"
+        },
+        "rootCauseIdentification": {
+            "rule": "Identify underlying causes, not just symptoms",
+            "commonPatterns": [
+                "Race conditions during rapid processing",
+                "Overly aggressive regex patterns",
+                "Missing fallback detection methods",
+                "Insufficient validation of external data"
+            ],
+            "preventionFocus": "Design fixes that prevent the issue class, not just the specific instance"
+        }
+    },
+    "wordpressMediaLibraryBestPractices": {
+        "description": "Advanced patterns for WordPress media library integration and duplicate prevention",
+        "attachmentCreationBestPractices": {
+            "rule": "Follow WordPress standards with enhanced duplicate prevention",
+            "creationProcess": [
+                "Download with wp_remote_get()",
+                "Save with wp_upload_bits()", 
+                "Create attachment with wp_insert_attachment() including correct post_parent",
+                "Generate metadata with wp_generate_attachment_metadata()",
+                "Update metadata with wp_update_attachment_metadata()",
+                "Verify post_parent relationship and correct if needed"
+            ],
+            "duplicatePrevention": "Check for existing attachments by MLS number and image number before downloading",
+            "orphanedAttachmentHandling": "Detect and correct post_parent=0 attachments automatically"
+        },
+        "attachmentMetaManagement": {
+            "rule": "Use comprehensive meta fields for attachment tracking and duplicate detection",
+            "requiredMeta": ["_treb_mls_number", "_treb_image_number", "_treb_source_url"],
+            "fallbackDetection": "Use _wp_attached_file for filename-based duplicate detection",
+            "metaRepair": "Automatically repair missing meta fields when attachments are found by alternate methods"
+        }
+    },
+    "geocodingAndAddressProcessingPatterns": {
+        "description": "Best practices for address processing and geocoding with external APIs",
+        "intelligentAddressProcessing": {
+            "rule": "Preserve meaningful address components while cleaning problematic elements",
+            "streetNameIntelligence": "Distinguish between directional street name components and apartment designations",
+            "contextAwareRegex": "Use lookahead/lookbehind patterns to understand word context",
+            "multipleVariations": "Generate multiple cleaning variations for better geocoding success rates",
+            "realWorldTesting": "Test with actual address patterns from target geographic area"
+        },
+        "geocodingReliability": {
+            "rule": "Implement robust geocoding with proper error handling and fallbacks",
+            "rateLimitCompliance": "Respect API rate limits (e.g., OpenStreetMap 1 req/sec) with transient tracking",
+            "errorHandling": "Handle 429 responses, network errors, JSON parsing errors, empty results",
+            "addressVariations": "Try multiple cleaned address variations until one succeeds",
+            "caching": "Cache successful results for 7 days, failures for 1 hour only"
+        }
+    },
+    "raceConditionPreventionPatterns": {
+        "description": "Patterns for preventing race conditions in rapid processing scenarios",
+        "immediateDataCommitment": {
+            "rule": "Commit critical identifying data immediately during object creation",
+            "postCreation": "Set MLS tags and meta fields immediately after wp_insert_post()",
+            "attachmentCreation": "Set identifying meta fields immediately after wp_insert_attachment()",
+            "transactionSafety": "Ensure critical data is committed before any external operations"
+        },
+        "multiLayeredDetection": {
+            "rule": "Implement multiple detection methods to handle timing issues",
+            "detectionHierarchy": "Primary method → fallback method → last resort method → auto-repair",
+            "gracefulDegradation": "Each method should handle cases where previous methods failed",
+            "autoRepair": "Automatically fix missing data when found by alternate detection methods"
+        }
+    },
+    "comprehensiveLoggingPatterns": {
+        "description": "Advanced logging strategies for complex operations and debugging",
+        "operationalLogging": {
+            "rule": "Log all major operations with sufficient context for debugging",
+            "duplicateDetection": "Log detection method used, items found, cleanup actions taken",
+            "addressCleaning": "Log original address, variations generated, geocoding attempts and results",
+            "postProcessing": "Log creation/update decisions, duplicate cleanup, attachment operations"
+        },
+        "debuggingSupport": {
+            "rule": "Include actionable information in log entries",
+            "contextData": "Include relevant IDs, counts, URLs, and processing decisions",
+            "errorDetails": "Log HTTP response codes, API error messages, and retry attempts",
+            "performanceMetrics": "Log processing times, batch sizes, and success/failure rates"
+        }
+    },
+    "testDrivenBugFixingPatterns": {
+        "description": "Methodology for fixing bugs with comprehensive test coverage",
+        "bugFixWorkflow": {
+            "rule": "Always create tests that reproduce the bug before fixing it",
+            "process": [
+                "Analyze production issue with real data",
+                "Create test case that reproduces the issue", 
+                "Verify test fails with current code",
+                "Implement fix",
+                "Verify test passes",
+                "Add additional edge case tests",
+                "Run full test suite to ensure no regressions"
+            ]
+        },
+        "preventionFocusedTesting": {
+            "rule": "Design tests to prevent entire classes of issues, not just specific instances",
+            "comprehensiveCoverage": "Test multiple variations of the same issue pattern",
+            "edgeCaseExploration": "Include boundary conditions and unusual but valid scenarios",
+            "realWorldData": "Use actual production data patterns in test cases"
+        }
     }
 }

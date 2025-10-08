@@ -289,7 +289,25 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.6.1 (Current)
+### Version 1.6.2 (Current)
+- **🔧 Critical Bug Fixes**: Comprehensive resolution of three major issues
+  - **Duplicate Image Prevention**: Enhanced detection handles WordPress `-1.jpg` suffixes with automatic cleanup
+  - **Geocoding Accuracy**: Intelligent address cleaning preserves street name components (Upper/Lower/North/South/East/West)
+  - **Duplicate Post Prevention**: Multi-layered detection with race condition protection and proactive cleanup
+- **🧪 Comprehensive Test Coverage**: 107 assertions covering diverse Toronto area addresses
+  - Real-world address patterns: condos, apartments, complex street names, directional components
+  - Edge cases: hyphenated streets, apostrophes, multiple directional words, Toronto area codes
+  - Robust validation ensures fixes prevent future regressions
+- **🛡️ Enhanced Reliability**: Zero-tolerance testing approach with 97 tests passing (437 assertions)
+  - Improved duplicate detection with fallback methods (meta → tags → title search)
+  - Automatic attachment cleanup and orphaned image correction
+  - Proactive duplicate post cleanup with attachment migration
+- **⚡ Performance Optimizations**: Intelligent processing with comprehensive logging
+  - Rate-limiting compliance for OpenStreetMap geocoding
+  - Batch image processing with duplicate prevention
+  - Enhanced error handling and debugging capabilities
+
+### Version 1.6.1
 - **📝 Post Excerpt Template System**: Customizable template for WordPress post excerpts
   - Full placeholder support identical to main listing template
   - HTML formatting support with wp_kses_post sanitization

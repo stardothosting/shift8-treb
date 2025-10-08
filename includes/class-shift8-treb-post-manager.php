@@ -153,6 +153,33 @@ class Shift8_TREB_Post_Manager {
             }
 
 
+            // Final safety check: clean up any existing duplicates before creating new post
+            $cleanup_result = $this->cleanup_duplicate_posts($mls_number);
+            if ($cleanup_result['cleaned_up'] > 0) {
+                shift8_treb_log('Cleaned up duplicates before creating new post', array(
+                    'mls_number' => esc_html($mls_number),
+                    'cleaned_up_count' => $cleanup_result['cleaned_up']
+                ));
+                
+                // Re-check for existing post after cleanup
+                $existing_post_id = $this->get_existing_listing_id($mls_number);
+                if ($existing_post_id) {
+                    // Update the existing post instead of creating new
+                    $post_id = $this->update_listing_post($existing_post_id, $listing);
+                    if (!$post_id) {
+                        return false;
+                    }
+                    
+                    return array(
+                        'success' => true,
+                        'action' => 'updated_after_cleanup',
+                        'post_id' => $post_id,
+                        'title' => sanitize_text_field($listing['UnparsedAddress']),
+                        'mls_number' => $mls_number
+                    );
+                }
+            }
+
             // Create the WordPress post
             $post_id = $this->create_listing_post($listing);
             
@@ -160,8 +187,10 @@ class Shift8_TREB_Post_Manager {
                 return false;
             }
 
-            // Store MLS number as meta for duplicate detection
+            // IMMEDIATELY store MLS number as both meta and tag for duplicate detection
+            // This prevents race conditions during rapid processing
             update_post_meta($post_id, 'listing_mls_number', sanitize_text_field($listing['ListingKey']));
+            wp_set_post_tags($post_id, array(sanitize_text_field($listing['ListingKey'])), true);
             
             // Store comprehensive listing data as custom meta fields
             $this->store_listing_meta_fields($post_id, $listing);
@@ -227,7 +256,7 @@ class Shift8_TREB_Post_Manager {
      * @return int|false Post ID if exists, false otherwise
      */
     private function get_existing_listing_id($mls_number) {
-        // Check by post meta (more reliable than tags)
+        // Primary check: by post meta (most reliable)
         $existing_posts = get_posts(array(
             'post_type' => 'post',
             'meta_key' => 'listing_mls_number',
@@ -237,7 +266,137 @@ class Shift8_TREB_Post_Manager {
             'fields' => 'ids'
         ));
 
-        return !empty($existing_posts) ? $existing_posts[0] : false;
+        if (!empty($existing_posts)) {
+            return $existing_posts[0];
+        }
+
+        // Fallback check: by tag (handles race conditions during rapid processing)
+        $tag_posts = get_posts(array(
+            'post_type' => 'post',
+            'tag' => sanitize_text_field($mls_number),
+            'numberposts' => 1,
+            'post_status' => 'any',
+            'fields' => 'ids'
+        ));
+
+        if (!empty($tag_posts)) {
+            // Found by tag but missing meta - fix the meta
+            $post_id = $tag_posts[0];
+            update_post_meta($post_id, 'listing_mls_number', sanitize_text_field($mls_number));
+            
+            shift8_treb_log('Fixed missing listing meta during duplicate check', array(
+                'post_id' => $post_id,
+                'mls_number' => esc_html($mls_number)
+            ));
+            
+            return $post_id;
+        }
+
+        // Additional safety check: look for posts with MLS in title (last resort)
+        $title_posts = get_posts(array(
+            'post_type' => 'post',
+            's' => $mls_number,
+            'numberposts' => 1,
+            'post_status' => 'any',
+            'fields' => 'ids'
+        ));
+
+        if (!empty($title_posts)) {
+            $post_id = $title_posts[0];
+            
+            // Verify this is actually the same listing by checking if MLS is in content or title
+            $post = get_post($post_id);
+            if ($post && (strpos($post->post_title, $mls_number) !== false || strpos($post->post_content, $mls_number) !== false)) {
+                // Fix missing meta and tag
+                update_post_meta($post_id, 'listing_mls_number', sanitize_text_field($mls_number));
+                wp_set_post_tags($post_id, array(sanitize_text_field($mls_number)), true);
+                
+                shift8_treb_log('Fixed missing meta and tag during duplicate check', array(
+                    'post_id' => $post_id,
+                    'mls_number' => esc_html($mls_number),
+                    'method' => 'title_search'
+                ));
+                
+                return $post_id;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Clean up duplicate posts with the same MLS number
+     *
+     * @since 1.6.2
+     * @param string $mls_number MLS number to check for duplicates
+     * @return array Cleanup results
+     */
+    private function cleanup_duplicate_posts($mls_number) {
+        // Find all posts with this MLS number
+        $all_posts = get_posts(array(
+            'post_type' => 'post',
+            'meta_key' => 'listing_mls_number',
+            'meta_value' => $mls_number,
+            'numberposts' => -1,
+            'post_status' => 'any',
+            'fields' => 'ids'
+        ));
+
+        // Also check by tag
+        $tag_posts = get_posts(array(
+            'post_type' => 'post',
+            'tag' => sanitize_text_field($mls_number),
+            'numberposts' => -1,
+            'post_status' => 'any',
+            'fields' => 'ids'
+        ));
+
+        // Merge and deduplicate, then reindex array
+        $all_duplicates = array_values(array_unique(array_merge($all_posts, $tag_posts)));
+
+        if (count($all_duplicates) <= 1) {
+            return array('duplicates_found' => 0, 'cleaned_up' => 0);
+        }
+
+        // Keep the first (oldest) post, remove others
+        $keep_post_id = $all_duplicates[0];
+        $removed_count = 0;
+
+        for ($i = 1; $i < count($all_duplicates); $i++) {
+            $duplicate_id = $all_duplicates[$i];
+            
+            // Move attachments from duplicate to primary post
+            $attachments = get_posts(array(
+                'post_type' => 'attachment',
+                'post_parent' => $duplicate_id,
+                'numberposts' => -1,
+                'fields' => 'ids'
+            ));
+
+            foreach ($attachments as $attachment_id) {
+                wp_update_post(array(
+                    'ID' => $attachment_id,
+                    'post_parent' => $keep_post_id
+                ));
+            }
+
+            // Delete the duplicate post
+            wp_delete_post($duplicate_id, true);
+            $removed_count++;
+        }
+
+        shift8_treb_log('Cleaned up duplicate posts', array(
+            'mls_number' => esc_html($mls_number),
+            'kept_post_id' => $keep_post_id,
+            'removed_count' => $removed_count,
+            'total_found' => count($all_duplicates)
+        ));
+
+        return array(
+            'duplicates_found' => count($all_duplicates),
+            'cleaned_up' => $removed_count,
+            'kept_post_id' => $keep_post_id
+        );
     }
 
     /**
@@ -1357,6 +1516,7 @@ class Shift8_TREB_Post_Manager {
      * @return int|false Attachment ID if exists, false otherwise
      */
     private function get_existing_attachment($mls_number, $image_number) {
+        // First check by meta (most reliable)
         $existing = get_posts(array(
             'post_type' => 'attachment',
             'meta_query' => array(
@@ -1375,7 +1535,53 @@ class Shift8_TREB_Post_Manager {
             'fields' => 'ids'
         ));
 
-        return !empty($existing) ? $existing[0] : false;
+        if (!empty($existing)) {
+            return $existing[0];
+        }
+
+        // Fallback: Check for WordPress duplicate filenames (e.g., image-1.jpg, image-2.jpg)
+        // This handles cases where meta wasn't set properly during previous imports
+        $filename_pattern = sanitize_text_field($mls_number) . '_' . intval($image_number);
+        
+        $duplicate_check = get_posts(array(
+            'post_type' => 'attachment',
+            'meta_query' => array(
+                array(
+                    'key' => '_wp_attached_file',
+                    'value' => $filename_pattern,
+                    'compare' => 'LIKE'
+                )
+            ),
+            'posts_per_page' => -1,
+            'fields' => 'ids'
+        ));
+
+        if (!empty($duplicate_check)) {
+            // Return the first one and clean up duplicates
+            $primary_attachment = $duplicate_check[0];
+            
+            if (count($duplicate_check) > 1) {
+                shift8_treb_log('Found duplicate attachments, cleaning up', array(
+                    'mls_number' => esc_html($mls_number),
+                    'image_number' => $image_number,
+                    'duplicates_found' => count($duplicate_check),
+                    'keeping_attachment_id' => $primary_attachment
+                ));
+                
+                // Clean up duplicates (keep the first, remove others)
+                for ($i = 1; $i < count($duplicate_check); $i++) {
+                    wp_delete_attachment($duplicate_check[$i], true);
+                }
+            }
+            
+            // Ensure proper meta is set on the primary attachment
+            update_post_meta($primary_attachment, '_treb_mls_number', sanitize_text_field($mls_number));
+            update_post_meta($primary_attachment, '_treb_image_number', intval($image_number));
+            
+            return $primary_attachment;
+        }
+
+        return false;
     }
 
     /**
@@ -2535,8 +2741,13 @@ var ws_height = '300';
         // Base cleaning - remove Toronto area codes (e.g., "Toronto C01" -> "Toronto")
         $base_address = preg_replace('/,\s*Toronto\s+[A-Z]\d{2}(?:,\s*ON)?/i', ', Toronto, ON', $address);
         
-        // Remove apartment/unit designations that can confuse geocoding
-        $base_address = preg_replace('/\s+(BSMT|MAIN|UPPER|LOWER|APT\s*\d+|UNIT\s*\d+|#\d+)\s*,?/i', '', $base_address);
+        // Improved apartment/unit designation removal - be more specific to avoid removing street name components
+        // Only remove UPPER/LOWER when they appear to be apartment designations (followed by comma or at end)
+        // Don't remove them when they're clearly part of street names (e.g., "Upper Highlands Drive")
+        $base_address = preg_replace('/\s+(BSMT|MAIN|APT\s*\d+|UNIT\s*\d+|#\d+)(?:\s*,|\s*$)/i', '', $base_address);
+        
+        // More careful UPPER/LOWER removal - only if followed by comma or end of string, not if followed by street name words
+        $base_address = preg_replace('/\s+(UPPER|LOWER)(?=\s*,|\s*$)(?!\s+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Boulevard|Blvd|Crescent|Cres|Circle|Cir|Court|Ct|Lane|Ln|Way|Place|Pl|Highway|Hwy|Parkway|Pkwy|Trail|Tr|Terrace|Ter|Grove|Gr|Heights|Hts|Hills|Park|Gardens|Gdns|Meadows|Valley|View|Ridge|Point|Pt|Bay|Beach|Shore|Lake|River|Creek|Mill|Woods|Forest|Glen|Dell|Hollow|Hill|Mount|Mt|North|South|East|West))/i', '', $base_address);
         
         // Variation 1: Remove unit numbers after street names (most aggressive cleaning)
         $clean1 = preg_replace('/(\b(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Boulevard|Blvd|Crescent|Cres|Circle|Cir|Court|Ct|Lane|Ln|Way|Place|Pl)\s+)\d+/i', '$1', $base_address);
@@ -2547,12 +2758,33 @@ var ws_height = '300';
         $clean2 = $this->ensure_canada_suffix($base_address);
         $variations[] = trim($clean2);
         
-        // Variation 3: Street name + city only (most basic)
-        if (preg_match('/^(.+?)(\d+\s+.+?(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Boulevard|Blvd|Crescent|Cres|Circle|Cir|Court|Ct|Lane|Ln|Way|Place|Pl))\s*\d*\s*,?\s*(.+?)(?:,\s*ON)?/i', $address, $matches)) {
-            $street_part = trim($matches[1] . ' ' . preg_replace('/\s+\d+$/', '', $matches[2]));
-            $city_part = preg_replace('/\s+[A-Z]\d{2}/', '', $matches[3]);
-            $clean3 = $street_part . ', ' . $city_part . ', ON, Canada';
-            $variations[] = trim($clean3);
+        // Variation 3: Street name + city only (most basic) - improved to handle directional street names
+        // Apply the same apartment/unit cleaning to the original address before parsing
+        $clean_for_parsing = preg_replace('/\s+(BSMT|MAIN|APT\s*\d+|UNIT\s*\d+|#\d+)(?:\s*,|\s*$)/i', '', $address);
+        // Also apply UPPER/LOWER cleaning for apartment designations
+        $clean_for_parsing = preg_replace('/\s+(UPPER|LOWER)(?=\s*,|\s*$)(?!\s+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Boulevard|Blvd|Crescent|Cres|Circle|Cir|Court|Ct|Lane|Ln|Way|Place|Pl|Highway|Hwy|Parkway|Pkwy|Trail|Tr|Terrace|Ter|Grove|Gr|Heights|Hts|Hills|Park|Gardens|Gdns|Meadows|Valley|View|Ridge|Point|Pt|Bay|Beach|Shore|Lake|River|Creek|Mill|Woods|Forest|Glen|Dell|Hollow|Hill|Mount|Mt|North|South|East|West))/i', '', $clean_for_parsing);
+        
+        if (preg_match('/^(\d+)\s+(.+?(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Boulevard|Blvd|Crescent|Cres|Circle|Cir|Court|Ct|Lane|Ln|Way|Place|Pl))\s*(?:\d+)?\s*,?\s*(.+?)(?:,\s*ON)?$/i', $clean_for_parsing, $matches)) {
+            $street_number = $matches[1];
+            $street_name = trim($matches[2]);
+            $city_part = preg_replace('/\s+[A-Z]\d{2}/', '', trim($matches[3]));
+            
+            // Only create this variation if it's different from the base address
+            $clean3 = $street_number . ' ' . $street_name . ', ' . $city_part . ', ON, Canada';
+            $clean3 = $this->ensure_canada_suffix($clean3);
+            
+            // Only add if it's meaningfully different from other variations
+            $is_duplicate = false;
+            foreach ($variations as $existing) {
+                if (strpos($existing, $street_name) !== false && strpos($existing, $city_part) !== false) {
+                    $is_duplicate = true;
+                    break;
+                }
+            }
+            
+            if (!$is_duplicate) {
+                $variations[] = trim($clean3);
+            }
         }
         
         // Remove duplicates and return unique variations

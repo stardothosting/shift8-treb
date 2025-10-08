@@ -79,6 +79,9 @@ Functions\when('esc_url_raw')->alias(function($url) {
     return filter_var($url, FILTER_SANITIZE_URL);
 });
 
+// Mock wp_set_post_tags function
+Functions\when('wp_set_post_tags')->justReturn(true);
+
 // Mock WP_CLI class to prevent code coverage errors
 if (!class_exists('WP_CLI')) {
     class WP_CLI {
