@@ -262,6 +262,11 @@ class MainPluginTest extends TestCase {
         Functions\when('get_option')
             ->justReturn(array('bearer_token' => ''));
         
+        // Mock transient functions for sync locking
+        Functions\when('get_transient')->justReturn(false); // No lock exists
+        Functions\when('set_transient')->justReturn(true);
+        Functions\when('delete_transient')->justReturn(true);
+        
         // Mock shift8_treb_log function
         Functions\when('esc_html')->alias(function($text) { return htmlspecialchars($text); });
         Functions\when('shift8_treb_log')->justReturn(true);
@@ -282,6 +287,11 @@ class MainPluginTest extends TestCase {
                 'max_listings_per_query' => 100,
                 'city_filter' => 'Toronto'
             ));
+        
+        // Mock transient functions for sync locking
+        Functions\when('get_transient')->justReturn(false); // No lock exists
+        Functions\when('set_transient')->justReturn(true);
+        Functions\when('delete_transient')->justReturn(true);
         
         // Mock decryption function
         Functions\when('shift8_treb_decrypt_token')

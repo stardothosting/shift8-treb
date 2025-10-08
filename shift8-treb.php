@@ -480,9 +480,22 @@ class Shift8_TREB {
      * @since 1.0.0
      */
     public function sync_listings_cron() {
-        shift8_treb_log('=== TREB CRON SYNC STARTED ===');
+        // Check if sync is already running (prevent simultaneous syncs)
+        $sync_lock = get_transient('shift8_treb_sync_lock');
+        if ($sync_lock) {
+            shift8_treb_log('Sync already running, skipping cron execution', array(
+                'lock_time' => $sync_lock,
+                'current_time' => time()
+            ));
+            return;
+        }
         
         try {
+            // Set sync lock (expires in 10 minutes as safety)
+            set_transient('shift8_treb_sync_lock', time(), 600);
+            
+            shift8_treb_log('=== TREB CRON SYNC STARTED ===');
+            
             // Include and initialize sync service
             require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-sync-service.php';
             $sync_service = new Shift8_TREB_Sync_Service();
@@ -510,6 +523,9 @@ class Shift8_TREB {
             shift8_treb_log('TREB cron sync failed', array(
                 'error' => esc_html($e->getMessage())
             ), 'error');
+        } finally {
+            // Always clear the sync lock
+            delete_transient('shift8_treb_sync_lock');
         }
     }
     

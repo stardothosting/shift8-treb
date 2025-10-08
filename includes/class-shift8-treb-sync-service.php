@@ -193,7 +193,36 @@ class Shift8_TREB_Sync_Service {
                 ));
             }
 
-            // Process each listing
+            // Deduplicate listings by MLS number (in case API returns duplicates)
+            $unique_listings = array();
+            $duplicate_count = 0;
+            foreach ($listings as $listing) {
+                $mls_number = isset($listing['ListingKey']) ? sanitize_text_field($listing['ListingKey']) : '';
+                if (!empty($mls_number)) {
+                    if (!isset($unique_listings[$mls_number])) {
+                        $unique_listings[$mls_number] = $listing;
+                    } else {
+                        $duplicate_count++;
+                        shift8_treb_log('Duplicate MLS in API response', array(
+                            'mls_number' => esc_html($mls_number),
+                            'duplicate_count' => $duplicate_count
+                        ));
+                    }
+                }
+            }
+            
+            // Convert back to indexed array
+            $listings = array_values($unique_listings);
+            
+            if ($duplicate_count > 0) {
+                shift8_treb_log('Deduplicated API response', array(
+                    'original_count' => $results['total_listings'],
+                    'unique_count' => count($listings),
+                    'duplicates_removed' => $duplicate_count
+                ));
+            }
+
+            // Process each unique listing
             $processed_count = 0;
             $total_to_process = count($listings);
             

@@ -383,7 +383,18 @@ class Shift8_TREB_Admin {
             ));
         }
         
+        // Check if sync is already running (prevent simultaneous syncs)
+        $sync_lock = get_transient('shift8_treb_sync_lock');
+        if ($sync_lock) {
+            wp_send_json_error(array(
+                'message' => esc_html__('Sync is already running. Please wait for it to complete.', 'shift8-treb')
+            ));
+        }
+        
         try {
+            // Set sync lock (expires in 10 minutes as safety)
+            set_transient('shift8_treb_sync_lock', time(), 600);
+            
             shift8_treb_log('=== MANUAL SYNC STARTED ===', array('user' => wp_get_current_user()->user_login), 'info');
             
             // Get the main plugin instance and trigger sync
@@ -397,11 +408,14 @@ class Shift8_TREB_Admin {
             ));
             
         } catch (Exception $e) {
-            shift8_treb_log('Manual sync failed', array('error' => $e->getMessage()), 'error');
+            shift8_treb_log('Manual sync failed', array('error' => esc_html($e->getMessage())), 'error');
             
             wp_send_json_error(array(
                 'message' => esc_html__('Sync failed: ', 'shift8-treb') . esc_html($e->getMessage())
             ));
+        } finally {
+            // Always clear the sync lock
+            delete_transient('shift8_treb_sync_lock');
         }
     }
 
