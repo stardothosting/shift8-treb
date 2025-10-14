@@ -982,5 +982,5 @@ class Shift8_TREB_CLI {
 
 // Register WP-CLI commands if WP-CLI is available
 if (defined('WP_CLI') && WP_CLI) {
-    WP_CLI::add_command('shift8-treb', 'Shift8_TREB_CLI');
+    WP_CLI::add_command('shift8-real-estate-listings-for-treb', 'Shift8_TREB_CLI');
 }

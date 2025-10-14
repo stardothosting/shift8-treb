@@ -1,4 +1,4 @@
-=== Shift8 TREB Real Estate Listings ===
+=== Shift8 Real Estate Listings for TREB ===
 Contributors: shift8web
 Tags: real estate, listings, treb, ampre, mls
 Requires at least: 5.0

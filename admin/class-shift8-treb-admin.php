@@ -67,10 +67,10 @@ class Shift8_TREB_Admin {
         // Add submenu page under Shift8 dashboard
         add_submenu_page(
             'shift8-settings',
-            esc_html__('Shift8 TREB Real Estate Listings', 'shift8-treb'),
-            esc_html__('TREB Listings', 'shift8-treb'),
+            esc_html__('Shift8 TREB Real Estate Listings', 'shift8-real-estate-listings-for-treb'),
+            esc_html__('TREB Listings', 'shift8-real-estate-listings-for-treb'),
             'manage_options',
-            'shift8-treb',
+            'shift8-real-estate-listings-for-treb',
             array($this, 'render_settings_page')
         );
     }
@@ -95,13 +95,13 @@ class Shift8_TREB_Admin {
     public function shift8_main_page() {
         ?>
         <div class="wrap">
-            <h1><?php esc_html_e('Shift8 Settings', 'shift8-treb'); ?></h1>
-            <p><?php esc_html_e('Welcome to the Shift8 settings page. Use the menu on the left to configure your Shift8 plugins.', 'shift8-treb'); ?></p>
+            <h1><?php esc_html_e('Shift8 Settings', 'shift8-real-estate-listings-for-treb'); ?></h1>
+            <p><?php esc_html_e('Welcome to the Shift8 settings page. Use the menu on the left to configure your Shift8 plugins.', 'shift8-real-estate-listings-for-treb'); ?></p>
             
             <div class="card">
-                <h2><?php esc_html_e('Available Plugins', 'shift8-treb'); ?></h2>
+                <h2><?php esc_html_e('Available Plugins', 'shift8-real-estate-listings-for-treb'); ?></h2>
                 <ul>
-                    <li><strong><?php esc_html_e('TREB Listings', 'shift8-treb'); ?></strong> - <?php esc_html_e('Toronto Real Estate Board listings integration via AMPRE API', 'shift8-treb'); ?></li>
+                    <li><strong><?php esc_html_e('TREB Listings', 'shift8-real-estate-listings-for-treb'); ?></strong> - <?php esc_html_e('Toronto Real Estate Board listings integration via AMPRE API', 'shift8-real-estate-listings-for-treb'); ?></li>
                 </ul>
             </div>
         </div>
@@ -118,7 +118,7 @@ class Shift8_TREB_Admin {
     public function render_settings_page() {
         // Verify user capabilities
         if (!current_user_can('manage_options')) {
-            wp_die(esc_html__('You do not have sufficient permissions to access this page.', 'shift8-treb'));
+            wp_die(esc_html__('You do not have sufficient permissions to access this page.', 'shift8-real-estate-listings-for-treb'));
         }
 
         // WordPress Settings API handles form submission automatically
@@ -275,7 +275,7 @@ class Shift8_TREB_Admin {
      */
     public function enqueue_scripts($hook) {
         // Only load on Shift8 TREB pages
-        if (strpos($hook, 'shift8-treb') === false) {
+        if (strpos($hook, 'shift8-real-estate-listings-for-treb') === false) {
             return;
         }
 
@@ -301,12 +301,12 @@ class Shift8_TREB_Admin {
             'ajaxurl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('shift8_treb_nonce'),
             'strings' => array(
-                'testing' => esc_html__('Testing...', 'shift8-treb'),
-                'syncing' => esc_html__('Syncing...', 'shift8-treb'),
-                'success' => esc_html__('Success!', 'shift8-treb'),
-                'error' => esc_html__('Error:', 'shift8-treb'),
-                'confirm_clear' => esc_html__('Are you sure you want to clear the log file?', 'shift8-treb'),
-                'confirm_sync' => esc_html__('Are you sure you want to run a manual sync? This may take several minutes.', 'shift8-treb')
+                'testing' => esc_html__('Testing...', 'shift8-real-estate-listings-for-treb'),
+                'syncing' => esc_html__('Syncing...', 'shift8-real-estate-listings-for-treb'),
+                'success' => esc_html__('Success!', 'shift8-real-estate-listings-for-treb'),
+                'error' => esc_html__('Error:', 'shift8-real-estate-listings-for-treb'),
+                'confirm_clear' => esc_html__('Are you sure you want to clear the log file?', 'shift8-real-estate-listings-for-treb'),
+                'confirm_sync' => esc_html__('Are you sure you want to run a manual sync? This may take several minutes.', 'shift8-real-estate-listings-for-treb')
             )
         ));
     }
@@ -322,7 +322,7 @@ class Shift8_TREB_Admin {
         // Verify nonce and capabilities
         if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'shift8_treb_nonce') || !current_user_can('manage_options')) {
             wp_send_json_error(array(
-                'message' => esc_html__('Security check failed.', 'shift8-treb')
+                'message' => esc_html__('Security check failed.', 'shift8-real-estate-listings-for-treb')
             ));
         }
         
@@ -332,7 +332,7 @@ class Shift8_TREB_Admin {
             
             if (empty($settings['bearer_token'])) {
                 wp_send_json_error(array(
-                    'message' => esc_html__('Bearer token not configured. Please enter your AMPRE API bearer token first.', 'shift8-treb')
+                    'message' => esc_html__('Bearer token not configured. Please enter your AMPRE API bearer token first.', 'shift8-real-estate-listings-for-treb')
                 ));
             }
             
@@ -349,7 +349,7 @@ class Shift8_TREB_Admin {
             
             if ($result['success']) {
                 wp_send_json_success(array(
-                    'message' => esc_html__('Successfully connected to AMPRE API!', 'shift8-treb')
+                    'message' => esc_html__('Successfully connected to AMPRE API!', 'shift8-real-estate-listings-for-treb')
                 ));
             } else {
                 wp_send_json_error(array(
@@ -379,7 +379,7 @@ class Shift8_TREB_Admin {
         // Verify nonce and capabilities
         if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'shift8_treb_nonce') || !current_user_can('manage_options')) {
             wp_send_json_error(array(
-                'message' => esc_html__('Security check failed.', 'shift8-treb')
+                'message' => esc_html__('Security check failed.', 'shift8-real-estate-listings-for-treb')
             ));
         }
         
@@ -387,7 +387,7 @@ class Shift8_TREB_Admin {
         $sync_lock = get_transient('shift8_treb_sync_lock');
         if ($sync_lock) {
             wp_send_json_error(array(
-                'message' => esc_html__('Sync is already running. Please wait for it to complete.', 'shift8-treb')
+                'message' => esc_html__('Sync is already running. Please wait for it to complete.', 'shift8-real-estate-listings-for-treb')
             ));
         }
         
@@ -404,14 +404,14 @@ class Shift8_TREB_Admin {
             shift8_treb_log('=== MANUAL SYNC COMPLETED ===', array(), 'info');
             
             wp_send_json_success(array(
-                'message' => esc_html__('Manual sync completed successfully. Check the logs for details.', 'shift8-treb')
+                'message' => esc_html__('Manual sync completed successfully. Check the logs for details.', 'shift8-real-estate-listings-for-treb')
             ));
             
         } catch (Exception $e) {
             shift8_treb_log('Manual sync failed', array('error' => esc_html($e->getMessage())), 'error');
             
             wp_send_json_error(array(
-                'message' => esc_html__('Sync failed: ', 'shift8-treb') . esc_html($e->getMessage())
+                'message' => esc_html__('Sync failed: ', 'shift8-real-estate-listings-for-treb') . esc_html($e->getMessage())
             ));
         } finally {
             // Always clear the sync lock
@@ -430,7 +430,7 @@ class Shift8_TREB_Admin {
         // Verify nonce and capabilities
         if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'shift8_treb_nonce') || !current_user_can('manage_options')) {
             wp_send_json_error(array(
-                'message' => esc_html__('Security check failed.', 'shift8-treb')
+                'message' => esc_html__('Security check failed.', 'shift8-real-estate-listings-for-treb')
             ));
         }
         
@@ -440,7 +440,7 @@ class Shift8_TREB_Admin {
             
             wp_send_json_success(array(
                 'logs' => implode("\n", $logs),
-                'message' => esc_html__('Logs retrieved successfully.', 'shift8-treb')
+                'message' => esc_html__('Logs retrieved successfully.', 'shift8-real-estate-listings-for-treb')
             ));
             
         } catch (Exception $e) {
@@ -461,7 +461,7 @@ class Shift8_TREB_Admin {
         // Verify nonce and capabilities
         if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'shift8_treb_nonce') || !current_user_can('manage_options')) {
             wp_send_json_error(array(
-                'message' => esc_html__('Security check failed.', 'shift8-treb')
+                'message' => esc_html__('Security check failed.', 'shift8-real-estate-listings-for-treb')
             ));
         }
         
@@ -471,11 +471,11 @@ class Shift8_TREB_Admin {
             
             if ($result) {
                 wp_send_json_success(array(
-                    'message' => esc_html__('All logs cleared successfully.', 'shift8-treb')
+                    'message' => esc_html__('All logs cleared successfully.', 'shift8-real-estate-listings-for-treb')
                 ));
             } else {
                 wp_send_json_error(array(
-                    'message' => esc_html__('Failed to clear logs.', 'shift8-treb')
+                    'message' => esc_html__('Failed to clear logs.', 'shift8-real-estate-listings-for-treb')
                 ));
             }
             
@@ -498,8 +498,8 @@ class Shift8_TREB_Admin {
         $last_sync = get_option('shift8_treb_last_sync', 0);
         
         return array(
-            'next_sync' => $next_sync ? gmdate('Y-m-d H:i:s', $next_sync) : esc_html__('Not scheduled', 'shift8-treb'),
-            'last_sync' => $last_sync ? gmdate('Y-m-d H:i:s', $last_sync) : esc_html__('Never', 'shift8-treb'),
+            'next_sync' => $next_sync ? gmdate('Y-m-d H:i:s', $next_sync) : esc_html__('Not scheduled', 'shift8-real-estate-listings-for-treb'),
+            'last_sync' => $last_sync ? gmdate('Y-m-d H:i:s', $last_sync) : esc_html__('Never', 'shift8-real-estate-listings-for-treb'),
             'is_scheduled' => (bool) $next_sync
         );
     }
@@ -513,7 +513,7 @@ class Shift8_TREB_Admin {
         // Verify nonce and capabilities
         if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'shift8_treb_nonce') || !current_user_can('manage_options')) {
             wp_send_json_error(array(
-                'message' => esc_html__('Security check failed.', 'shift8-treb')
+                'message' => esc_html__('Security check failed.', 'shift8-real-estate-listings-for-treb')
             ));
         }
 
@@ -522,7 +522,7 @@ class Shift8_TREB_Admin {
             
             if (empty($last_sync)) {
                 wp_send_json_success(array(
-                    'message' => esc_html__('Incremental sync is already disabled.', 'shift8-treb')
+                    'message' => esc_html__('Incremental sync is already disabled.', 'shift8-real-estate-listings-for-treb')
                 ));
                 return;
             }
@@ -537,12 +537,12 @@ class Shift8_TREB_Admin {
             ), 'info');
 
             wp_send_json_success(array(
-                'message' => esc_html__('Sync mode reset successfully. Next sync will use age-based filtering.', 'shift8-treb')
+                'message' => esc_html__('Sync mode reset successfully. Next sync will use age-based filtering.', 'shift8-real-estate-listings-for-treb')
             ));
 
         } catch (Exception $e) {
             wp_send_json_error(array(
-                'message' => esc_html__('Error resetting sync mode: ', 'shift8-treb') . esc_html($e->getMessage())
+                'message' => esc_html__('Error resetting sync mode: ', 'shift8-real-estate-listings-for-treb') . esc_html($e->getMessage())
             ));
         }
     }

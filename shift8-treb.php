@@ -1,12 +1,12 @@
 <?php
 /**
- * Plugin Name: Shift8 TREB Real Estate Listings
+ * Plugin Name: Shift8 Real Estate Listings for TREB
  * Plugin URI: https://github.com/stardothosting/shift8-treb
  * Description: Integrates Toronto Real Estate Board (TREB) listings via AMPRE API, automatically importing property listings into WordPress. Replaces the Python script with native WordPress functionality.
  * Version: 1.6.2
  * Author: Shift8 Web
  * Author URI: https://shift8web.ca
- * Text Domain: shift8-treb
+ * Text Domain: shift8-real-estate-listings-for-treb
  * Domain Path: /languages
  * Requires at least: 5.0
  * Tested up to: 6.8
@@ -129,7 +129,7 @@ function shift8_treb_decrypt_data($encrypted_data) {
 if (version_compare(PHP_VERSION, '7.4', '<')) {
     add_action('admin_notices', function() {
         echo '<div class="notice notice-error"><p>';
-        echo esc_html__('Shift8 TREB Real Estate Listings requires PHP 7.4 or higher. Please upgrade PHP.', 'shift8-treb');
+        echo esc_html__('Shift8 TREB Real Estate Listings requires PHP 7.4 or higher. Please upgrade PHP.', 'shift8-real-estate-listings-for-treb');
         echo '</p></div>';
     });
     return;
@@ -350,7 +350,7 @@ class Shift8_TREB {
         add_settings_error(
             'shift8_treb_settings',
             'settings_updated',
-            esc_html__('Settings saved successfully.', 'shift8-treb'),
+            esc_html__('Settings saved successfully.', 'shift8-real-estate-listings-for-treb'),
             'updated'
         );
         
@@ -374,19 +374,19 @@ class Shift8_TREB {
         $custom_schedules = array(
             'shift8_treb_8hours' => array(
                 'interval' => 8 * HOUR_IN_SECONDS,
-                'display'  => esc_html__('Every 8 Hours', 'shift8-treb')
+                'display'  => esc_html__('Every 8 Hours', 'shift8-real-estate-listings-for-treb')
             ),
             'shift8_treb_12hours' => array(
                 'interval' => 12 * HOUR_IN_SECONDS,
-                'display'  => esc_html__('Every 12 Hours', 'shift8-treb')
+                'display'  => esc_html__('Every 12 Hours', 'shift8-real-estate-listings-for-treb')
             ),
             'shift8_treb_biweekly' => array(
                 'interval' => 2 * 7 * DAY_IN_SECONDS,
-                'display'  => esc_html__('Bi-Weekly (Every 2 Weeks)', 'shift8-treb')
+                'display'  => esc_html__('Bi-Weekly (Every 2 Weeks)', 'shift8-real-estate-listings-for-treb')
             ),
             'shift8_treb_monthly' => array(
                 'interval' => 30 * DAY_IN_SECONDS,
-                'display'  => esc_html__('Monthly', 'shift8-treb')
+                'display'  => esc_html__('Monthly', 'shift8-real-estate-listings-for-treb')
             )
         );
         

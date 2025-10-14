@@ -242,7 +242,7 @@ Functions\when('wp_die')->alias(function($message) {
 Functions\when('add_settings_error')->justReturn(true);
 Functions\when('register_setting')->justReturn(true);
 Functions\when('add_menu_page')->justReturn('shift8-settings');
-Functions\when('add_submenu_page')->justReturn('shift8-treb');
+Functions\when('add_submenu_page')->justReturn('shift8-real-estate-listings-for-treb');
 Functions\when('load_plugin_textdomain')->justReturn(true);
 Functions\when('flush_rewrite_rules')->justReturn(true);
 Functions\when('wp_kses_post')->alias(function($content) { return strip_tags($content); });
