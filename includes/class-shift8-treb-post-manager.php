@@ -2741,8 +2741,19 @@ var ws_height = '300';
      * @return array Geocoding result with lat, lng, success, service, address_used
      */
     private function clean_address_for_geocoding($address) {
+        // In test environment, return mock coordinates to prevent HTTP requests
+        if (defined('SHIFT8_TREB_TESTING') && SHIFT8_TREB_TESTING) {
+            return [
+                'lat' => 43.6532,
+                'lng' => -79.3832,
+                'success' => true,
+                'service' => 'test_mock',
+                'address_used' => $address
+            ];
+        }
+        
         // Use the new MultiGeocodingService for 99%+ success rate
-        require_once(plugin_dir_path(__FILE__) . 'Services/MultiGeocodingService.php');
+        require_once(dirname(__FILE__) . '/Services/MultiGeocodingService.php');
         
         $geocoder = new \Shift8\TREB\Services\MultiGeocodingService();
         $result = $geocoder->geocode($address);

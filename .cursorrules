@@ -252,7 +252,9 @@
             "✓ Ensure silent failures have comprehensive debugging output",
             "✓ Verify featured image priority logic works correctly",
             "✓ Test existing attachment detection and orphaned attachment correction",
-            "✓ Confirm HTTP request debugging provides actionable error information"
+            "✓ Confirm HTTP request debugging provides actionable error information",
+            "✓ CRITICAL: Verify NO temporary test files (test-*.php, debug-*.php) exist in plugin root",
+            "✓ MANDATORY: Clean plugin root directory of any temporary/debug files before commits"
         ]
     },
     "emergencyFixes": {
@@ -272,8 +274,41 @@
             "addOrphanedAttachmentCorrection": "Add post_parent validation and auto-correction in batch processing",
             "addBatchProcessingDebugging": "Add comprehensive CLI output and logging for batch operations",
             "validateSyncConsistency": "Verify all sync entry points use shared Sync_Service class",
-            "addMetaFieldStorage": "Implement comprehensive meta field storage with proper sanitization"
+            "addMetaFieldStorage": "Implement comprehensive meta field storage with proper sanitization",
+            "cleanupTestFiles": "IMMEDIATELY delete any test-*.php, debug-*.php, or temporary files from plugin root"
         }
+    },
+    "testFileCleanupPolicy": {
+        "description": "CRITICAL: NEVER leave temporary test files in plugin root directory",
+        "rule": "ABSOLUTELY FORBIDDEN to leave any temporary test files in the plugin root directory",
+        "enforcement": "IMMEDIATELY delete any files matching these patterns from plugin root:",
+        "forbiddenPatterns": [
+            "test-*.php",
+            "debug-*.php", 
+            "temp-*.php",
+            "scratch-*.php",
+            "analyze-*.php",
+            "check-*.php",
+            "verify-*.php",
+            "validate-*.php"
+        ],
+        "allowedTestLocations": [
+            "tests/ directory ONLY",
+            "tests/unit/ for unit tests",
+            "tests/integration/ for integration tests",
+            "tests/fixtures/ for test data"
+        ],
+        "mandatoryCleanup": {
+            "rule": "ALWAYS clean up temporary files immediately after use",
+            "process": [
+                "1. Create temporary test files ONLY when absolutely necessary",
+                "2. Use them for immediate testing/debugging",
+                "3. DELETE them immediately after use - NO EXCEPTIONS",
+                "4. NEVER commit temporary test files to git",
+                "5. NEVER leave them in the plugin root directory"
+            ]
+        },
+        "consequences": "Leaving test files in plugin root clutters the directory and violates clean code practices"
     },
     "developmentBestPractices": {
         "description": "Critical development practices learned from building this plugin",
