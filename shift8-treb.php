@@ -196,6 +196,9 @@ class Shift8_TREB {
         
         // Hook for Google Maps script enqueue
         add_action('wp_enqueue_scripts', array($this, 'enqueue_google_maps_scripts'));
+        
+        // Hook for WalkScore script enqueue
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_walkscore_scripts'));
     }
     
     /**
@@ -657,6 +660,97 @@ function shift8_treb_init_map() {
         );
         
         wp_add_inline_script('shift8-treb-google-maps-api', $map_script, 'before');
+    }
+    
+    /**
+     * Enqueue WalkScore scripts for TREB listings
+     *
+     * @since 1.6.2
+     */
+    public function enqueue_walkscore_scripts() {
+        // Only enqueue on single posts that are TREB listings
+        if (!is_single() || !shift8_treb_is_listing_post()) {
+            return;
+        }
+        
+        // Get settings
+        $settings = get_option('shift8_treb_settings', array());
+        
+        // Only enqueue if we have WalkScore ID
+        if (empty($settings['walkscore_id'])) {
+            return;
+        }
+        
+        // Get current post data
+        $post_id = get_the_ID();
+        $mls_number = get_post_meta($post_id, 'listing_mls_number', true);
+        
+        if (empty($mls_number)) {
+            return;
+        }
+        
+        // Check if post content contains WalkScore div
+        $post_content = get_post_field('post_content', $post_id);
+        if (strpos($post_content, 'ws-walkscore-tile') === false) {
+            return; // No WalkScore div in content
+        }
+        
+        // Get listing address from stored meta data
+        $unparsed_address = get_post_meta($post_id, 'shift8_treb_unparsed_address', true);
+        $city = get_post_meta($post_id, 'shift8_treb_city', true);
+        $province = get_post_meta($post_id, 'shift8_treb_state_province', true);
+        $country = get_post_meta($post_id, 'shift8_treb_country', true);
+        
+        // Build full address for WalkScore (fallback to post title if meta not available)
+        if (!empty($unparsed_address)) {
+            $full_address = $unparsed_address;
+            if (!empty($city) && strpos($full_address, $city) === false) {
+                $full_address .= ', ' . $city;
+            }
+            if (!empty($province) && strpos($full_address, $province) === false) {
+                $full_address .= ', ' . $province;
+            }
+            if (!empty($country) && strpos($full_address, $country) === false) {
+                $full_address .= ', ' . $country;
+            }
+        } else {
+            // Fallback to post title
+            $full_address = get_the_title($post_id) . ', Canada';
+        }
+        
+        // Enqueue WalkScore external script
+        wp_enqueue_script(
+            'shift8-treb-walkscore-api',
+            'https://www.walkscore.com/tile/show-walkscore-tile.php',
+            array(),
+            null, // No version for external script
+            true
+        );
+        
+        // Add inline script with WalkScore initialization
+        $walkscore_script = sprintf("
+// WalkScore configuration
+var ws_wsid = '%s';
+var ws_address = '%s';
+var ws_format = 'square';
+var ws_width = '300';
+var ws_height = '300';
+
+// WalkScore CSS
+var walkscoreCSS = '#ws-walkscore-tile{position:relative;text-align:left}#ws-walkscore-tile *{float:none;}';
+var style = document.createElement('style');
+style.type = 'text/css';
+if (style.styleSheet) {
+    style.styleSheet.cssText = walkscoreCSS;
+} else {
+    style.appendChild(document.createTextNode(walkscoreCSS));
+}
+document.getElementsByTagName('head')[0].appendChild(style);",
+            esc_js($settings['walkscore_id']),
+            esc_js($full_address)
+        );
+        
+        wp_add_inline_script('shift8-treb-walkscore-api', $walkscore_script, 'before');
     }
     
     /**

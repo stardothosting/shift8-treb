@@ -26,19 +26,6 @@
             }
         });
 
-        // View Logs
-        $('#view-logs').on('click', function(e) {
-            e.preventDefault();
-            toggleLogViewer();
-        });
-
-        // Clear Logs
-        $('#clear-logs').on('click', function(e) {
-            e.preventDefault();
-            if (confirm(shift8TREB.strings.confirm_clear)) {
-                clearLogs();
-            }
-        });
 
         // Auto-refresh sync status every 30 seconds
         setInterval(refreshSyncStatus, 30000);
@@ -125,86 +112,6 @@
         });
     }
 
-    /**
-     * Toggle log viewer
-     */
-    function toggleLogViewer() {
-        var $logViewer = $('#log-viewer');
-        var $button = $('#view-logs');
-        
-        if ($logViewer.is(':visible')) {
-            $logViewer.hide();
-            $button.text('View Recent Logs');
-        } else {
-            $button.addClass('loading').prop('disabled', true);
-            
-            // Load logs
-            $.ajax({
-                url: shift8TREB.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'shift8_treb_get_logs',
-                    nonce: shift8TREB.nonce
-                },
-                success: function(response) {
-                    if (response.success) {
-                        var logs = response.data.logs;
-                        var logContent = logs.join('\n');
-                        $('#log-content').val(logContent);
-                        $logViewer.show();
-                        $button.text('Hide Logs');
-                        
-                        // Show log size info
-                        if (response.data.log_size) {
-                            showNotice('info', 'Log file size: ' + response.data.log_size);
-                        }
-                    } else {
-                        showNotice('error', response.data.message);
-                    }
-                },
-                error: function(xhr, status, error) {
-                    showNotice('error', shift8TREB.strings.error + ' ' + error);
-                },
-                complete: function() {
-                    $button.removeClass('loading').prop('disabled', false);
-                }
-            });
-        }
-    }
-
-    /**
-     * Clear logs
-     */
-    function clearLogs() {
-        var $button = $('#clear-logs');
-        
-        $button.addClass('loading').prop('disabled', true);
-
-        $.ajax({
-            url: shift8TREB.ajaxurl,
-            type: 'POST',
-            data: {
-                action: 'shift8_treb_clear_log',
-                nonce: shift8TREB.nonce
-            },
-            success: function(response) {
-                if (response.success) {
-                    showNotice('success', response.data.message);
-                    $('#log-content').val('');
-                    $('#log-viewer').hide();
-                    $('#view-logs').text('View Recent Logs');
-                } else {
-                    showNotice('error', response.data.message);
-                }
-            },
-            error: function(xhr, status, error) {
-                showNotice('error', shift8TREB.strings.error + ' ' + error);
-            },
-            complete: function() {
-                $button.removeClass('loading').prop('disabled', false);
-            }
-        });
-    }
 
     /**
      * Refresh sync status

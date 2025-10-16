@@ -639,9 +639,27 @@ class PostManagerTest extends TestCase {
     }
 
     /**
-     * Test address cleaning for geocoding with multiple variations
+     * Test multi-service geocoding integration
      */
-    public function test_address_cleaning_variations() {
+    public function test_multi_service_geocoding_integration() {
+        // Mock wp_remote_get for geocoding
+        Functions\when('wp_remote_get')->justReturn([
+            'body' => json_encode([
+                [
+                    'lat' => '43.6676064',
+                    'lon' => '-79.399438',
+                    'display_name' => 'East Liberty Street, Toronto, Ontario, Canada'
+                ]
+            ])
+        ]);
+        Functions\when('wp_remote_retrieve_body')->justReturn(json_encode([
+            [
+                'lat' => '43.6676064',
+                'lon' => '-79.399438',
+                'display_name' => 'East Liberty Street, Toronto, Ontario, Canada'
+            ]
+        ]));
+
         $settings = array();
         $post_manager = new \Shift8_TREB_Post_Manager($settings);
 
@@ -651,20 +669,19 @@ class PostManagerTest extends TestCase {
 
         // Test TREB address with unit number after street name
         $treb_address = '55 East Liberty Street 1210, Toronto C01, ON M6K 3P9';
-        $variations = $method->invoke($post_manager, $treb_address);
+        $result = $method->invoke($post_manager, $treb_address);
 
-        $this->assertIsArray($variations, 'Should return array of address variations');
-        $this->assertGreaterThan(1, count($variations), 'Should return multiple variations');
+        $this->assertIsArray($result, 'Should return geocoding result array');
+        $this->assertArrayHasKey('lat', $result);
+        $this->assertArrayHasKey('lng', $result);
+        $this->assertArrayHasKey('success', $result);
+        $this->assertArrayHasKey('service', $result);
+        $this->assertArrayHasKey('address_used', $result);
         
-        // Check that aggressive cleaning removes unit number after street name
-        $aggressive_variation = $variations[0];
-        $this->assertStringContainsString('East Liberty Street ,', $aggressive_variation, 'Should remove unit number after street name');
-        $this->assertStringContainsString('Canada', $aggressive_variation, 'Should add Canada suffix');
-        
-        // Check that conservative variation keeps more of original format
-        $conservative_variation = $variations[1];
-        $this->assertStringContainsString('Street 1210', $conservative_variation, 'Conservative should keep unit number');
-        $this->assertStringContainsString('Toronto, ON', $conservative_variation, 'Should standardize Toronto area code');
+        // Should return coordinates
+        $this->assertEquals(43.6676064, $result['lat'], '', 0.0001);
+        $this->assertEquals(-79.399438, $result['lng'], '', 0.0001);
+        $this->assertTrue($result['success']);
     }
 
     /**
@@ -1926,5 +1943,78 @@ class PostManagerTest extends TestCase {
         // Verify that wp_set_post_tags was called with the MLS number
         // This ensures the tag is set during post creation, not after
         $this->assertTrue(true); // Basic assertion - in real implementation, we'd verify the function calls
+    }
+
+    /**
+     * Test address cleaning for specific problematic addresses that were failing geocoding
+     * Addresses Issue: Unit numbers after street names, floor designations, duplicate cities
+     */
+    public function test_address_cleaning_problematic_geocoding_addresses() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('clean_address_for_geocoding');
+        $method->setAccessible(true);
+
+        // Test the 6 specific problematic addresses that were failing geocoding
+        $problematic_addresses = [
+            // Unit numbers after street names with directional indicators
+            '395 Dundas Street W 603, Oakville, ON L6M 5R8' => [
+                'should_contain' => ['395 Dundas Street W, Oakville'],
+                'should_not_contain' => ['603']
+            ],
+            // Duplicate city names
+            '3328 Oriole Drive, London South, ON N6M 0K1, London South, ON' => [
+                'should_contain' => ['3328 Oriole Drive, London South, ON N6M 0K1'],
+                'should_not_contain' => ['London South, ON N6M 0K1, London South, ON']
+            ],
+            // Floor designations with directional indicators
+            '1425 Gerrard Street E 2nd Flr, Toronto E01, ON M4L 1Z7, Toronto E01, ON' => [
+                'should_contain' => ['1425 Gerrard Street E, Toronto'],
+                'should_not_contain' => ['2nd Flr', 'Toronto E01']
+            ],
+            // Trail street type with unit numbers
+            '10 Old Mill Trail 305, Toronto W08, ON M8X 2Y9, Toronto W08, ON' => [
+                'should_contain' => ['10 Old Mill Trail, Toronto'],
+                'should_not_contain' => ['305', 'Toronto W08']
+            ],
+            '12 Old Mill Trail 503, Toronto W08, ON M8X 2Z4' => [
+                'should_contain' => ['12 Old Mill Trail, Toronto'],
+                'should_not_contain' => ['503']
+            ],
+            // Avenue with unit numbers
+            '103 The Queensway Avenue 2707, Toronto W01, ON M6S 5B3' => [
+                'should_contain' => ['103 The Queensway Avenue, Toronto'],
+                'should_not_contain' => ['2707']
+            ]
+        ];
+
+        foreach ($problematic_addresses as $input => $expectations) {
+            $variations = $method->invoke($this->post_manager, $input);
+            
+            $this->assertGreaterThan(0, count($variations), "Should generate variations for: $input");
+            
+            $all_variations = implode(' | ', $variations);
+            
+            foreach ($expectations['should_contain'] as $expected) {
+                $found = false;
+                foreach ($variations as $variation) {
+                    if (stripos($variation, $expected) !== false) {
+                        $found = true;
+                        break;
+                    }
+                }
+                $this->assertTrue($found, "Should find '$expected' in variations for input: $input. Got: $all_variations");
+            }
+            
+            foreach ($expectations['should_not_contain'] as $not_expected) {
+                $found = false;
+                foreach ($variations as $variation) {
+                    if (stripos($variation, $not_expected) !== false) {
+                        $found = true;
+                        break;
+                    }
+                }
+                $this->assertFalse($found, "Should NOT find '$not_expected' in variations for input: $input. Got: $all_variations");
+            }
+        }
     }
 }

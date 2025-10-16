@@ -499,23 +499,6 @@ $sync_status = array(
                 </p>
             </div>
 
-            <!-- Debug Logs -->
-            <?php if ($settings['debug_enabled'] === '1'): ?>
-            <div class="card">
-                <h3><?php esc_html_e('Debug Logs', 'shift8-real-estate-listings-for-treb'); ?></h3>
-                <p>
-                    <button type="button" id="view-logs" class="button button-secondary">
-                        <?php esc_html_e('View Recent Logs', 'shift8-real-estate-listings-for-treb'); ?>
-                    </button>
-                    <button type="button" id="clear-logs" class="button button-secondary">
-                        <?php esc_html_e('Clear Logs', 'shift8-real-estate-listings-for-treb'); ?>
-                    </button>
-                </p>
-                <div id="log-viewer" style="display: none;">
-                    <textarea id="log-content" rows="15" style="width: 100%; font-family: monospace; font-size: 11px;" readonly></textarea>
-                </div>
-            </div>
-            <?php endif; ?>
 
             <!-- Documentation -->
             <div class="card">
@@ -754,46 +737,5 @@ jQuery(document).ready(function($) {
             }
         });
     });
-    
-    // View Logs
-    $('#view-logs').on('click', function() {
-        var button = $(this);
-        var logViewer = $('#log-viewer');
-        var logContent = $('#log-content');
-        
-        if (logViewer.is(':visible')) {
-            logViewer.hide();
-            button.text('<?php esc_html_e('View Recent Logs', 'shift8-real-estate-listings-for-treb'); ?>');
-            return;
-        }
-        
-        button.prop('disabled', true).text('<?php esc_html_e('Loading...', 'shift8-real-estate-listings-for-treb'); ?>');
-        
-        $.ajax({
-            url: ajaxurl,
-            type: 'POST',
-            data: {
-                action: 'shift8_treb_get_logs',
-                nonce: '<?php echo esc_js(wp_create_nonce('shift8_treb_nonce')); ?>'
-            },
-            success: function(response) {
-                if (response.success) {
-                    logContent.val(response.data.logs);
-                    logViewer.show();
-                    button.text('<?php esc_html_e('Hide Logs', 'shift8-real-estate-listings-for-treb'); ?>');
-                } else {
-                    alert('<?php esc_html_e('Failed to load logs: ', 'shift8-real-estate-listings-for-treb'); ?>' + response.data.message);
-                }
-            },
-            error: function() {
-                alert('<?php esc_html_e('Failed to load logs.', 'shift8-real-estate-listings-for-treb'); ?>');
-            },
-            complete: function() {
-                button.prop('disabled', false);
-            }
-        });
-    });
-    
-    // Clear Logs handler is in admin.js - no duplicate handler needed here
 });
 </script>

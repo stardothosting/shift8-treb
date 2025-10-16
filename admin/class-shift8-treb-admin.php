@@ -38,8 +38,6 @@ class Shift8_TREB_Admin {
         // AJAX handlers with proper security
         add_action('wp_ajax_shift8_treb_test_api_connection', array($this, 'ajax_test_api_connection'));
         add_action('wp_ajax_shift8_treb_manual_sync', array($this, 'ajax_manual_sync'));
-        add_action('wp_ajax_shift8_treb_get_logs', array($this, 'ajax_get_logs'));
-        add_action('wp_ajax_shift8_treb_clear_log', array($this, 'ajax_clear_log'));
         add_action('wp_ajax_shift8_treb_reset_sync', array($this, 'ajax_reset_sync'));
     }
 
@@ -305,7 +303,6 @@ class Shift8_TREB_Admin {
                 'syncing' => esc_html__('Syncing...', 'shift8-real-estate-listings-for-treb'),
                 'success' => esc_html__('Success!', 'shift8-real-estate-listings-for-treb'),
                 'error' => esc_html__('Error:', 'shift8-real-estate-listings-for-treb'),
-                'confirm_clear' => esc_html__('Are you sure you want to clear the log file?', 'shift8-real-estate-listings-for-treb'),
                 'confirm_sync' => esc_html__('Are you sure you want to run a manual sync? This may take several minutes.', 'shift8-real-estate-listings-for-treb')
             )
         ));
@@ -419,72 +416,6 @@ class Shift8_TREB_Admin {
         }
     }
 
-    /**
-     * AJAX handler for getting logs
-     *
-     * Retrieves recent log entries with proper security validation.
-     *
-     * @since 1.0.0
-     */
-    public function ajax_get_logs() {
-        // Verify nonce and capabilities
-        if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'shift8_treb_nonce') || !current_user_can('manage_options')) {
-            wp_send_json_error(array(
-                'message' => esc_html__('Security check failed.', 'shift8-real-estate-listings-for-treb')
-            ));
-        }
-        
-        try {
-            // Get recent log entries using our logging system
-            $logs = shift8_treb_get_logs(200); // Get last 200 lines
-            
-            wp_send_json_success(array(
-                'logs' => implode("\n", $logs),
-                'message' => esc_html__('Logs retrieved successfully.', 'shift8-real-estate-listings-for-treb')
-            ));
-            
-        } catch (Exception $e) {
-            wp_send_json_error(array(
-                'message' => esc_html($e->getMessage())
-            ));
-        }
-    }
-
-    /**
-     * AJAX handler for clearing logs
-     *
-     * Clears the debug log file with proper security validation.
-     *
-     * @since 1.0.0
-     */
-    public function ajax_clear_log() {
-        // Verify nonce and capabilities
-        if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'shift8_treb_nonce') || !current_user_can('manage_options')) {
-            wp_send_json_error(array(
-                'message' => esc_html__('Security check failed.', 'shift8-real-estate-listings-for-treb')
-            ));
-        }
-        
-        try {
-            // Use our new logging system to clear logs
-            $result = shift8_treb_clear_logs();
-            
-            if ($result) {
-                wp_send_json_success(array(
-                    'message' => esc_html__('All logs cleared successfully.', 'shift8-real-estate-listings-for-treb')
-                ));
-            } else {
-                wp_send_json_error(array(
-                    'message' => esc_html__('Failed to clear logs.', 'shift8-real-estate-listings-for-treb')
-                ));
-            }
-            
-        } catch (Exception $e) {
-            wp_send_json_error(array(
-                'message' => esc_html($e->getMessage())
-            ));
-        }
-    }
 
 
     /**
