@@ -19,6 +19,7 @@
             <directory>vendor</directory>
             <directory>languages</directory>
             <directory>admin</directory>
+            <directory>svn</directory>
             <file>push.sh</file>
         </exclude>
         <report>

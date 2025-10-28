@@ -312,7 +312,13 @@
             "✓ Test existing attachment detection and orphaned attachment correction",
             "✓ Confirm HTTP request debugging provides actionable error information",
             "✓ CRITICAL: Verify NO temporary test files (test-*.php, debug-*.php) exist in plugin root",
-            "✓ MANDATORY: Clean plugin root directory of any temporary/debug files before commits"
+            "✓ MANDATORY: Clean plugin root directory of any temporary/debug files before commits",
+            "✓ CRITICAL: Verify composer test exits with code 0, not just passing tests",
+            "✓ Ensure phpunit.xml excludes svn/ directory from code coverage",
+            "✓ Check for 'Cannot declare class' errors during coverage generation",
+            "✓ Verify conditional publishing logic (draft when no images, publish when images exist)",
+            "✓ Test image retry logic on subsequent syncs",
+            "✓ Verify auto-publish functionality when images become available"
         ]
     },
     "emergencyFixes": {
@@ -333,7 +339,8 @@
             "addBatchProcessingDebugging": "Add comprehensive CLI output and logging for batch operations",
             "validateSyncConsistency": "Verify all sync entry points use shared Sync_Service class",
             "addMetaFieldStorage": "Implement comprehensive meta field storage with proper sanitization",
-            "cleanupTestFiles": "IMMEDIATELY delete any test-*.php, debug-*.php, or temporary files from plugin root"
+            "cleanupTestFiles": "IMMEDIATELY delete any test-*.php, debug-*.php, or temporary files from plugin root",
+            "fixPhpunitCoverage": "Add <directory>svn</directory> to <exclude> section in phpunit.xml to fix 'Cannot declare class' errors"
         }
     },
     "testFileCleanupPolicy": {
@@ -464,8 +471,40 @@
         },
         "testExecution": {
             "command": "composer test",
-            "requirement": "MUST show 'OK (X tests, Y assertions)' with NO errors or failures",
-            "failureResponse": "Immediately investigate and fix every single failure"
+            "requirement": "MUST show 'OK (X tests, Y assertions)' with NO errors or failures AND exit code 0",
+            "exitCodeAwareness": {
+                "rule": "ALWAYS check exit code, not just test output - non-zero exit code means failure",
+                "critical": "Exit code 255 or any non-zero code indicates failure even if tests appear to pass",
+                "examples": {
+                    "success": "Exit code: 0 - All tests passed and coverage generated successfully",
+                    "failure": "Exit code: 255 - Tests may pass but coverage generation or other steps failed"
+                },
+                "verification": "Check both test output AND command exit code before declaring success"
+            },
+            "failureResponse": "Immediately investigate and fix every single failure including non-zero exit codes"
+        },
+        "phpunitConfiguration": {
+            "description": "PHPUnit configuration best practices for WordPress plugins",
+            "coverageExclusions": {
+                "rule": "Always exclude duplicate class files and non-code directories from coverage",
+                "requiredExclusions": [
+                    "tests/ - test files themselves",
+                    "vendor/ - third-party dependencies",
+                    "svn/ - WordPress.org SVN directory with duplicate code",
+                    "languages/ - translation files",
+                    "admin/ - if not testing admin classes directly"
+                ],
+                "rationale": "SVN directory contains trunk/ and tags/ with duplicate classes causing fatal errors",
+                "symptom": "Fatal error: Cannot declare class X, because the name is already in use",
+                "solution": "Add <directory>svn</directory> to <exclude> section in phpunit.xml"
+            },
+            "svnDirectoryIssue": {
+                "problem": "WordPress.org plugins often have svn/trunk/ and svn/tags/ directories that duplicate main codebase",
+                "consequence": "Code coverage tool includes these files causing 'class already declared' fatal errors",
+                "detection": "Exit code 255 with 'Cannot declare class' error during coverage generation",
+                "fix": "Add svn directory to coverage exclusions in phpunit.xml",
+                "prevention": "Always exclude version control directories (svn/, .git/) from PHPUnit coverage"
+            }
         },
         "functionalTesting": {
             "description": "Manual testing checklist",
@@ -1646,6 +1685,82 @@
             "comprehensiveCoverage": "Test multiple variations of the same issue pattern",
             "edgeCaseExploration": "Include boundary conditions and unusual but valid scenarios",
             "realWorldData": "Use actual production data patterns in test cases"
+        }
+    },
+    "conditionalPublishingPatterns": {
+        "description": "Best practices for conditional post publishing based on content availability (v1.6.3+)",
+        "imageBasedPublishing": {
+            "rule": "Never publish listing posts without images to prevent poor user experience",
+            "implementation": "Create posts as draft initially, publish only after successful image download",
+            "benefits": [
+                "Prevents imageless listings from appearing on site",
+                "Automatically resolves when images become available",
+                "Provides clear draft queue for manual review"
+            ]
+        },
+        "creationFlow": {
+            "rule": "All new posts start as draft, conditionally promoted to published",
+            "process": [
+                "1. Create post with post_status='draft'",
+                "2. Store meta data and tags immediately",
+                "3. Process listing images",
+                "4. If images_downloaded > 0, update to post_status='publish'",
+                "5. If no images, remain as draft with external references stored"
+            ],
+            "logging": "Log final status decision with image stats for debugging"
+        },
+        "updateFlow": {
+            "rule": "Updates retry failed images and can auto-publish drafts",
+            "process": [
+                "1. Get current post status",
+                "2. Retry any stored external image references",
+                "3. Process new images from API",
+                "4. Determine new status based on image availability",
+                "5. If was draft + now has images = publish",
+                "6. If was published + lost all images = draft (edge case)"
+            ],
+            "benefits": "Automatic resolution of temporary image failures"
+        },
+        "retryMechanism": {
+            "rule": "Store failed image URLs for future retry attempts",
+            "storage": "Use _treb_external_images post meta with URL, MLS, image number, attempts, timestamp",
+            "retryTriggers": [
+                "Automatic: During post updates via normal sync",
+                "Manual: WP-CLI command 'wp shift8-treb retry-images'",
+                "Scheduled: Could implement dedicated retry cron (future enhancement)"
+            ],
+            "cleanup": "Remove external references when images successfully download"
+        },
+        "wpcliIntegration": {
+            "rule": "Provide manual retry command for admin control",
+            "command": "wp shift8-treb retry-images [--limit=N] [--status=draft|publish|any] [--dry-run]",
+            "features": [
+                "Process posts with failed images",
+                "Show progress and statistics",
+                "Auto-publish drafts when images succeed",
+                "Support filtering and limits"
+            ],
+            "useCase": "Admin sees drafts piling up, manually triggers retry to resolve"
+        },
+        "testingRequirements": {
+            "rule": "Comprehensive test coverage for all status transitions",
+            "tests": [
+                "Post created as draft when no images",
+                "Post published when images succeed",
+                "Draft auto-published when images become available",
+                "Update retries external images",
+                "Retry method handles various failure scenarios"
+            ],
+            "mocking": "Ensure test mocks don't break is_wp_error() and other WordPress functions"
+        },
+        "userCommunication": {
+            "rule": "Clearly document this behavior for end users",
+            "documentation": [
+                "Explain why some listings appear as drafts",
+                "Document retry-images CLI command",
+                "Provide troubleshooting steps for persistent failures",
+                "Set expectations about automatic resolution"
+            ]
         }
     }
 }

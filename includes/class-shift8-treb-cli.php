@@ -978,6 +978,161 @@ class Shift8_TREB_CLI {
             WP_CLI::error('Failed to clear logs: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Retry downloading failed images for posts with external image references
+     *
+     * This command finds all posts that have failed image downloads stored as external
+     * references and attempts to download them again. Useful when images were temporarily
+     * unavailable during initial sync.
+     *
+     * ## OPTIONS
+     *
+     * [--limit=<number>]
+     * : Limit number of posts to process (default: unlimited)
+     *
+     * [--dry-run]
+     * : Show what would be processed without actually downloading
+     *
+     * [--status=<status>]
+     * : Only process posts with specific status (draft, publish, any). Default: any
+     *
+     * ## EXAMPLES
+     *
+     *     # Retry all posts with failed images
+     *     wp shift8-treb retry-images
+     *
+     *     # Dry run to see which posts would be processed
+     *     wp shift8-treb retry-images --dry-run
+     *
+     *     # Process only draft posts (most likely to need images)
+     *     wp shift8-treb retry-images --status=draft
+     *
+     *     # Limit to 10 posts
+     *     wp shift8-treb retry-images --limit=10
+     *
+     * @when after_wp_load
+     */
+    public function retry_images($args, $assoc_args) {
+        $limit = isset($assoc_args['limit']) ? intval($assoc_args['limit']) : 0;
+        $dry_run = isset($assoc_args['dry-run']);
+        $status = isset($assoc_args['status']) ? sanitize_text_field($assoc_args['status']) : 'any';
+
+        WP_CLI::line('=== Retry Failed Image Downloads ===');
+        
+        if ($dry_run) {
+            WP_CLI::warning('DRY RUN MODE - No images will be downloaded');
+        }
+
+        // Find all posts with external image references
+        $query_args = array(
+            'post_type' => 'post',
+            'posts_per_page' => $limit > 0 ? $limit : -1,
+            'meta_query' => array(
+                array(
+                    'key' => '_treb_external_images',
+                    'compare' => 'EXISTS'
+                )
+            ),
+            'fields' => 'ids'
+        );
+
+        // Add status filter if specified
+        if ($status !== 'any') {
+            $query_args['post_status'] = $status;
+        } else {
+            $query_args['post_status'] = array('draft', 'publish', 'pending', 'private');
+        }
+
+        $posts = get_posts($query_args);
+        
+        if (empty($posts)) {
+            WP_CLI::success('No posts found with failed images.');
+            return;
+        }
+
+        WP_CLI::line(sprintf('Found %d post(s) with failed images', count($posts)));
+        WP_CLI::line('');
+
+        // Initialize Post Manager
+        $settings = get_option('shift8_treb_settings', array());
+        require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-post-manager.php';
+        $post_manager = new Shift8_TREB_Post_Manager($settings);
+
+        $total_attempted = 0;
+        $total_downloaded = 0;
+        $total_failed = 0;
+        $posts_published = 0;
+
+        $progress = \WP_CLI\Utils\make_progress_bar('Processing posts', count($posts));
+
+        foreach ($posts as $post_id) {
+            $post = get_post($post_id);
+            $mls_number = get_post_meta($post_id, 'listing_mls_number', true);
+            $was_draft = ($post->post_status === 'draft');
+
+            WP_CLI::line(sprintf('Processing: %s (ID: %d, Status: %s, MLS: %s)', 
+                $post->post_title, 
+                $post_id, 
+                $post->post_status,
+                $mls_number ? $mls_number : 'N/A'
+            ));
+
+            if ($dry_run) {
+                $external_images = get_post_meta($post_id, '_treb_external_images', true);
+                WP_CLI::line(sprintf('  Would retry %d failed image(s)', count($external_images)));
+                $progress->tick();
+                continue;
+            }
+
+            // Use reflection to access private method
+            $reflection = new ReflectionClass($post_manager);
+            $method = $reflection->getMethod('retry_external_images');
+            $method->setAccessible(true);
+            
+            $stats = $method->invoke($post_manager, $post_id);
+
+            $total_attempted += $stats['attempted'];
+            $total_downloaded += $stats['downloaded'];
+            $total_failed += $stats['still_failed'];
+
+            if ($stats['downloaded'] > 0) {
+                WP_CLI::line(sprintf('  ✅ Downloaded: %d/%d images', 
+                    $stats['downloaded'], 
+                    $stats['attempted']
+                ));
+
+                // Check if post was auto-published
+                $post_after = get_post($post_id);
+                if ($was_draft && $post_after->post_status === 'publish') {
+                    $posts_published++;
+                    WP_CLI::line('  📢 Auto-published (now has images)');
+                }
+            } else {
+                WP_CLI::line(sprintf('  ❌ Still failed: %d images', $stats['still_failed']));
+            }
+
+            $progress->tick();
+        }
+
+        $progress->finish();
+        WP_CLI::line('');
+        WP_CLI::line('=== Summary ===');
+        WP_CLI::line(sprintf('Posts processed: %d', count($posts)));
+        WP_CLI::line(sprintf('Images attempted: %d', $total_attempted));
+        WP_CLI::line(sprintf('Images downloaded: %d', $total_downloaded));
+        WP_CLI::line(sprintf('Images still failed: %d', $total_failed));
+        
+        if ($posts_published > 0) {
+            WP_CLI::line(sprintf('Posts auto-published: %d', $posts_published));
+        }
+
+        if ($total_downloaded > 0) {
+            WP_CLI::success(sprintf('Successfully downloaded %d/%d images!', $total_downloaded, $total_attempted));
+        } else {
+            WP_CLI::warning('No images were successfully downloaded.');
+        }
+    }
 }
 
 // Register WP-CLI commands if WP-CLI is available

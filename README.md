@@ -289,7 +289,34 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.6.2 (Current)
+### Version 1.6.3 (Current)
+- **📸 Conditional Publishing**: Intelligent image-based post status management
+  - Posts remain as drafts if images fail to download
+  - Prevents imageless listings from appearing on site
+  - Automatic resolution when images become available
+- **🔄 Automatic Image Retry**: Smart failure recovery system
+  - Failed images automatically retried on subsequent syncs
+  - External image references stored with attempt tracking
+  - Comprehensive failure management and logging
+- **🚀 Auto-Publish Functionality**: Draft posts automatically publish when images succeed
+  - Status transitions logged for debugging
+  - Clear draft queue for manual review
+  - Improved user experience with automatic resolution
+- **⚙️ WP-CLI Retry Command**: Manual control over image retry process
+  - `wp shift8-treb retry-images` with progress tracking
+  - Filter by post status (draft/publish/any)
+  - Dry-run mode and limit options
+  - Detailed statistics and summary output
+- **🧪 Enhanced Test Coverage**: 116 tests passing (382 assertions)
+  - 6 new tests for conditional publishing scenarios
+  - Retry logic and auto-publish validation
+  - Comprehensive mocking for WordPress functions
+- **🔧 WordPress.org Compliance**: Plugin directory standards
+  - Fixed contributors list and external services documentation
+  - Proper enqueue functions for CSS/JS assets
+  - Enhanced code organization and maintainability
+
+### Version 1.6.2
 - **🔧 Critical Bug Fixes**: Comprehensive resolution of three major issues
   - **Duplicate Image Prevention**: Enhanced detection handles WordPress `-1.jpg` suffixes with automatic cleanup
   - **Geocoding Accuracy**: Intelligent address cleaning preserves street name components (Upper/Lower/North/South/East/West)

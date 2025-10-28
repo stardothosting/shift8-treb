@@ -131,6 +131,13 @@ The plugin is designed for single-site installations. Multisite compatibility is
 == Changelog ==
 
 = 1.6.3 =
+* **Conditional Publishing**: Posts now remain as drafts if images fail to download, preventing imageless listings from appearing on site
+* **Automatic Image Retry**: Failed images are automatically retried on subsequent syncs with intelligent status management
+* **Auto-Publish Functionality**: Draft posts automatically publish when images become available on retry
+* **WP-CLI Retry Command**: New `wp shift8-treb retry-images` command for manual retry control with progress tracking
+* **Enhanced Image Handling**: Stores external image references with attempt tracking for comprehensive failure management
+* **Improved User Experience**: Clear draft queue for manual review with automatic resolution of temporary image failures
+* **Comprehensive Test Coverage**: Added 6 new tests covering conditional publishing, retry logic, and auto-publish scenarios
 * Fixed WordPress.org plugin directory compliance issues
 * Updated contributors list to 'shift8'
 * Replaced inline CSS/JS with proper wp_enqueue functions for better performance

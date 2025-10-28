@@ -180,8 +180,9 @@ class Shift8_TREB_Post_Manager {
                 }
             }
 
-            // Create the WordPress post
-            $post_id = $this->create_listing_post($listing);
+            // Create the WordPress post (initially as draft)
+            // We'll set to publish after images are processed
+            $post_id = $this->create_listing_post($listing, 'draft');
             
             if (!$post_id) {
                 return false;
@@ -201,19 +202,38 @@ class Shift8_TREB_Post_Manager {
             // Update post content with actual image HTML after processing
             $this->update_post_content_with_images($post_id);
 
-            shift8_treb_log('Listing processed successfully', array(
-                'post_id' => $post_id,
-                'mls_number' => esc_html($mls_number),
-                'image_stats' => $image_stats
-            ));
+            // Determine final post status based on image success
+            // Publish only if we have at least one image downloaded
+            $final_status = ($image_stats['downloaded'] > 0) ? 'publish' : 'draft';
+            
+            if ($final_status === 'publish') {
+                wp_update_post(array(
+                    'ID' => $post_id,
+                    'post_status' => 'publish'
+                ));
+                
+                shift8_treb_log('Listing published with images', array(
+                    'post_id' => $post_id,
+                    'mls_number' => esc_html($mls_number),
+                    'images_downloaded' => $image_stats['downloaded']
+                ));
+            } else {
+                shift8_treb_log('Listing saved as draft (no images)', array(
+                    'post_id' => $post_id,
+                    'mls_number' => esc_html($mls_number),
+                    'image_stats' => $image_stats
+                ));
+            }
 
             // Return detailed result for CLI reporting
             return array(
                 'success' => true,
-                'action' => 'created', // For now, assume all are new (we can enhance this later)
+                'action' => 'created',
                 'post_id' => $post_id,
+                'post_status' => $final_status,
                 'title' => sanitize_text_field($listing['UnparsedAddress']),
-                'mls_number' => $mls_number
+                'mls_number' => $mls_number,
+                'image_stats' => $image_stats
             );
 
         } catch (Exception $e) {
@@ -560,9 +580,10 @@ class Shift8_TREB_Post_Manager {
      *
      * @since 1.0.0
      * @param array $listing Listing data
+     * @param string $post_status Post status (publish or draft)
      * @return int|false Post ID on success, false on failure
      */
-    private function create_listing_post($listing) {
+    private function create_listing_post($listing, $post_status = 'publish') {
         // Prepare post data
         $post_title = sanitize_text_field($listing['UnparsedAddress']);
         $post_content = $this->generate_post_content($listing);
@@ -573,7 +594,7 @@ class Shift8_TREB_Post_Manager {
             'post_title' => $post_title,
             'post_content' => $post_content,
             'post_excerpt' => $post_excerpt,
-            'post_status' => 'publish',
+            'post_status' => $post_status,
             'post_type' => 'post',
             'post_category' => array($category_id),
             'tags_input' => array(sanitize_text_field($listing['ListingKey'])) // MLS as tag
@@ -588,6 +609,12 @@ class Shift8_TREB_Post_Manager {
             return false;
         }
 
+        shift8_treb_log('Created listing post', array(
+            'post_id' => $post_id,
+            'post_status' => $post_status,
+            'mls_number' => esc_html($listing['ListingKey'])
+        ));
+
         return $post_id;
     }
 
@@ -600,12 +627,29 @@ class Shift8_TREB_Post_Manager {
      * @return int|false Post ID on success, false on failure
      */
     private function update_listing_post($post_id, $listing) {
+        // Get current post status
+        $current_post = get_post($post_id);
+        $was_draft = ($current_post && $current_post->post_status === 'draft');
+        
+        // Retry any external image references first
+        $retry_stats = $this->retry_external_images($post_id);
+        
+        // Update comprehensive listing data
+        $this->store_listing_meta_fields($post_id, $listing);
+        
+        // Process new images from API (may have new images since last sync)
+        $image_stats = $this->process_listing_images($post_id, $listing);
+        
+        // Determine if we should publish (either was already published, or was draft but now has images)
+        $has_images = has_post_thumbnail($post_id) || ($image_stats['downloaded'] > 0) || ($retry_stats['downloaded'] > 0);
+        $new_status = $has_images ? 'publish' : 'draft';
+        
         $post_data = array(
             'ID' => $post_id,
             'post_title' => $this->generate_post_title($listing),
             'post_content' => $this->generate_post_content($listing, $post_id),
             'post_excerpt' => $this->generate_post_excerpt($listing),
-            'post_status' => 'publish',
+            'post_status' => $new_status,
             'post_date' => current_time('mysql'),
             'post_modified' => current_time('mysql')
         );
@@ -620,6 +664,24 @@ class Shift8_TREB_Post_Manager {
         $category_id = $this->get_listing_category_id($listing);
         if ($category_id) {
             wp_set_post_categories($post_id, array($category_id));
+        }
+        
+        // Update post content with actual image HTML after processing
+        $this->update_post_content_with_images($post_id);
+        
+        // Log status change if relevant
+        if ($was_draft && $new_status === 'publish') {
+            shift8_treb_log('Draft listing auto-published with images', array(
+                'post_id' => $post_id,
+                'mls_number' => esc_html($listing['ListingKey']),
+                'retry_stats' => $retry_stats,
+                'image_stats' => $image_stats
+            ));
+        } elseif (!$was_draft && $new_status === 'draft') {
+            shift8_treb_log('Published listing reverted to draft (lost images)', array(
+                'post_id' => $post_id,
+                'mls_number' => esc_html($listing['ListingKey'])
+            ));
         }
 
         return $post_id;
@@ -1676,6 +1738,105 @@ class Shift8_TREB_Post_Manager {
         if ($is_preferred && !has_post_thumbnail($post_id)) {
             update_post_meta($post_id, '_treb_preferred_external_image', esc_url_raw($image_url));
         }
+    }
+
+    /**
+     * Retry downloading external image references
+     * 
+     * This method attempts to download images that previously failed.
+     * Used during post updates to retry failed images and potentially publish drafts.
+     *
+     * @since 1.6.3
+     * @param int $post_id Post ID
+     * @return array Statistics about retry attempts
+     */
+    private function retry_external_images($post_id) {
+        $stats = array(
+            'attempted' => 0,
+            'downloaded' => 0,
+            'still_failed' => 0
+        );
+
+        // Get external image references
+        $external_images = get_post_meta($post_id, '_treb_external_images', true);
+        if (!is_array($external_images) || empty($external_images)) {
+            return $stats;
+        }
+
+        $stats['attempted'] = count($external_images);
+        $still_failed = array();
+        $first_successful_id = null;
+        $preferred_successful_id = null;
+
+        shift8_treb_log('Retrying external images', array(
+            'post_id' => $post_id,
+            'image_count' => count($external_images)
+        ));
+
+        foreach ($external_images as $image_ref) {
+            $image_url = $image_ref['url'];
+            $mls_number = $image_ref['mls_number'];
+            $image_number = $image_ref['image_number'];
+            $is_preferred = $image_ref['is_preferred'];
+            $failed_attempts = isset($image_ref['failed_attempts']) ? $image_ref['failed_attempts'] : 2;
+
+            // Attempt to download
+            $attachment_id = $this->download_and_attach_image($image_url, $post_id, $mls_number, $image_number);
+
+            if ($attachment_id) {
+                $stats['downloaded']++;
+                
+                shift8_treb_log('External image retry succeeded', array(
+                    'post_id' => $post_id,
+                    'attachment_id' => $attachment_id,
+                    'mls_number' => esc_html($mls_number),
+                    'image_number' => $image_number
+                ));
+
+                // Track for featured image setting
+                if (!$first_successful_id) {
+                    $first_successful_id = $attachment_id;
+                }
+                if ($is_preferred) {
+                    $preferred_successful_id = $attachment_id;
+                }
+            } else {
+                // Still failed, keep in external references with updated attempt count
+                $stats['still_failed']++;
+                $still_failed[] = array(
+                    'url' => $image_url,
+                    'mls_number' => $mls_number,
+                    'image_number' => $image_number,
+                    'is_preferred' => $is_preferred,
+                    'failed_attempts' => $failed_attempts + 1,
+                    'last_attempt' => current_time('mysql')
+                );
+            }
+        }
+
+        // Update external images meta (remove successful ones)
+        if (empty($still_failed)) {
+            delete_post_meta($post_id, '_treb_external_images');
+            delete_post_meta($post_id, '_treb_preferred_external_image');
+        } else {
+            update_post_meta($post_id, '_treb_external_images', $still_failed);
+        }
+
+        // Set featured image if we don't have one yet
+        if (!has_post_thumbnail($post_id)) {
+            if ($preferred_successful_id) {
+                set_post_thumbnail($post_id, $preferred_successful_id);
+            } elseif ($first_successful_id) {
+                set_post_thumbnail($post_id, $first_successful_id);
+            }
+        }
+
+        shift8_treb_log('External image retry completed', array(
+            'post_id' => $post_id,
+            'stats' => $stats
+        ));
+
+        return $stats;
     }
 
     /**
