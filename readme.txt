@@ -1,6 +1,6 @@
-=== Shift8 Real Estate Listings for TREB ===
+=== Shift8 Real Estate Listings for TRREB ===
 Contributors: shift8
-Tags: real estate, listings, treb, proptx, mls
+Tags: real estate, listings, proptx, tr, mlstr
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
@@ -13,6 +13,8 @@ Automatically synchronize Toronto Real Estate Board (TREB) listings via PropTx R
 == Description ==
 
 Shift8 TREB Real Estate Listings is a comprehensive WordPress plugin that automates the process of importing and managing real estate listings from the Toronto Real Estate Board (TREB) via the PropTx RESO Web API. This plugin eliminates manual listing management by automatically fetching property data and creating properly formatted WordPress posts.
+
+**[Read our detailed blog post about this plugin](https://shift8web.ca/how-to-import-trreb-proptx-real-estate-listings-into-your-wordpress-site/)** for technical insights, implementation details, and the story behind migrating from RETS to RESO Web API.
 
 = Key Features =
 
