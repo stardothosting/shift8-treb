@@ -1,23 +1,23 @@
 === Shift8 Real Estate Listings for TREB ===
 Contributors: shift8
-Tags: real estate, listings, treb, ampre, mls
+Tags: real estate, listings, treb, proptx, mls
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.6.4
+Stable tag: 1.6.5
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
-Automatically synchronize Toronto Real Estate Board (TREB) listings via AMPRE API and create WordPress posts for property listings.
+Automatically synchronize Toronto Real Estate Board (TREB) listings via PropTx RESO Web API and create WordPress posts for property listings.
 
 == Description ==
 
-Shift8 TREB Real Estate Listings is a comprehensive WordPress plugin that automates the process of importing and managing real estate listings from the Toronto Real Estate Board (TREB) via the AMPRE API. This plugin eliminates manual listing management by automatically fetching property data and creating properly formatted WordPress posts.
+Shift8 TREB Real Estate Listings is a comprehensive WordPress plugin that automates the process of importing and managing real estate listings from the Toronto Real Estate Board (TREB) via the PropTx RESO Web API. This plugin eliminates manual listing management by automatically fetching property data and creating properly formatted WordPress posts.
 
 = Key Features =
 
 * **Automated Synchronization** - Scheduled sync using WordPress cron with configurable frequency
-* **AMPRE API Integration** - Secure Bearer token authentication with comprehensive error handling
+* **PropTx RESO Web API Integration** - Secure Bearer token authentication with comprehensive error handling
 * **Unlimited Image Import** - Imports ALL available photos per listing with cross-hosting batch processing
 * **Universal Template System** - Compatible with all page builders (Visual Composer, Elementor, Gutenberg, Bricks)
 * **Google Maps Integration** - Interactive maps with free OpenStreetMap geocoding and conditional display
@@ -29,7 +29,7 @@ Shift8 TREB Real Estate Listings is a comprehensive WordPress plugin that automa
 
 = Perfect For =
 
-* Real estate agencies using TREB/AMPRE API
+* Real estate agencies using TREB/PropTx RESO Web API
 * Property management companies
 * Real estate agents and brokers
 * WordPress developers building real estate sites
@@ -49,7 +49,7 @@ Shift8 TREB Real Estate Listings is a comprehensive WordPress plugin that automa
 1. Upload the plugin files to the `/wp-content/plugins/shift8-treb/` directory
 2. Activate the plugin through the 'Plugins' screen in WordPress
 3. Navigate to Shift8 > TREB Listings in the admin menu
-4. Configure your AMPRE API bearer token and sync preferences
+4. Configure your PropTx RESO Web API bearer token and sync preferences
 5. Set up your listing template with the provided placeholders
 6. Run your first sync manually or wait for the scheduled sync
 
@@ -57,11 +57,11 @@ Shift8 TREB Real Estate Listings is a comprehensive WordPress plugin that automa
 
 This plugin connects to several external services to provide real estate listing functionality:
 
-**AMPRE API (Toronto Real Estate Board)**
+**PropTx RESO Web API (Toronto Real Estate Board)**
 - **Purpose**: Retrieves real estate listing data from the Toronto Real Estate Board (TREB) MLS system
 - **Data Sent**: API authentication token, search parameters, listing filters
 - **When**: During scheduled syncs and manual data imports
-- **Service Provider**: AMPRE (query.ampre.ca)
+- **Service Provider**: PropTx RESO Web API (query.ampre.ca)
 - **Terms of Service**: https://www.ampre.ca/terms-of-service
 - **Privacy Policy**: https://www.ampre.ca/privacy-policy
 
@@ -93,9 +93,9 @@ All external service connections are made server-to-server and do not directly c
 
 == Frequently Asked Questions ==
 
-= Do I need an AMPRE API account? =
+= Do I need a PropTx RESO Web API account? =
 
-Yes, you need a valid AMPRE API bearer token to access TREB listing data. Contact AMPRE for API access credentials.
+Yes, you need a valid PropTx RESO Web API bearer token to access TREB listing data. Contact PropTx for API access credentials.
 
 = How many images can be imported per listing? =
 
@@ -129,6 +129,11 @@ The plugin is designed for single-site installations. Multisite compatibility is
 4. Quick stats widget displaying sync status and listing counts
 
 == Changelog ==
+
+= 1.6.5 =
+* **Branding Update**: Replaced all mentions of "AMPRE" with "PropTx RESO Web API" in documentation
+* **Documentation Enhancement**: Updated all readme files to reflect the official API provider naming
+* Improved consistency across user-facing documentation
 
 = 1.6.4 =
 * **Conditional Publishing**: Posts now remain as drafts if images fail to download, preventing imageless listings from appearing on site
@@ -177,7 +182,7 @@ The plugin is designed for single-site installations. Multisite compatibility is
 
 = 1.6.0 =
 * Sold Listing Management: Intelligent handling of sold/closed listings with automatic status updates
-* Automatically detects sold listings using ContractStatus and StandardStatus fields from AMPRE API
+* Automatically detects sold listings using ContractStatus and StandardStatus fields from PropTx RESO Web API
 * Updates existing listings to sold status with "(SOLD)" title prefix for clear identification
 * Adds "Sold" tag to sold listings for easy filtering and categorization
 * Skips importing new sold listings (only updates existing ones to sold status)
@@ -232,7 +237,7 @@ The plugin is designed for single-site installations. Multisite compatibility is
 
 = 1.0.0 =
 * Initial release
-* AMPRE API integration
+* PropTx RESO Web API integration
 * WordPress post creation
 * Administrative interface
 * WP-CLI command support
@@ -271,7 +276,7 @@ Significant improvements to image processing, template system, and performance. 
 * PHP 7.4 or higher
 * cURL extension for API communication
 * Write permissions for wp-content/uploads directory
-* Valid AMPRE API bearer token
+* Valid PropTx RESO Web API bearer token
 
 == Support ==
 
@@ -279,8 +284,8 @@ For support, documentation, and updates, visit the plugin's GitHub repository or
 
 == Privacy Policy ==
 
-This plugin connects to the AMPRE API to retrieve real estate listing data. No personal data is transmitted to external services beyond what is necessary for API authentication and data retrieval. All API credentials are encrypted and stored securely in your WordPress database.
+This plugin connects to the PropTx RESO Web API to retrieve real estate listing data. No personal data is transmitted to external services beyond what is necessary for API authentication and data retrieval. All API credentials are encrypted and stored securely in your WordPress database.
 
 == Credits ==
 
-Developed by Shift8 Web for integration with the AMPRE API and Toronto Real Estate Board listing management.
+Developed by Shift8 Web for integration with the PropTx RESO Web API and Toronto Real Estate Board listing management.

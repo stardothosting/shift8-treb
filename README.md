@@ -1,10 +1,10 @@
 # Shift8 Real Estate Listings for TREB
 
-A WordPress plugin that synchronizes real estate listings from the Toronto Real Estate Board (TREB) via the AMPRE API and automatically creates WordPress posts for property listings.
+A WordPress plugin that synchronizes real estate listings from the Toronto Real Estate Board (TREB) via the PropTx RESO Web API and automatically creates WordPress posts for property listings.
 
 ## Overview
 
-This plugin replaces manual listing management by automatically fetching property data from the AMPRE API and creating properly formatted WordPress posts. It integrates seamlessly with the existing Shift8 plugin ecosystem and provides comprehensive administrative controls for managing real estate listing synchronization.
+This plugin replaces manual listing management by automatically fetching property data from the PropTx RESO Web API and creating properly formatted WordPress posts. It integrates seamlessly with the existing Shift8 plugin ecosystem and provides comprehensive administrative controls for managing real estate listing synchronization.
 
 ## Features
 
@@ -14,7 +14,7 @@ This plugin replaces manual listing management by automatically fetching propert
 - Manual sync capability with real-time progress tracking
 - Duplicate detection and prevention using MLS numbers
 
-### AMPRE API Integration
+### PropTx RESO Web API Integration
 - Secure Bearer token authentication with intelligent encryption handling
 - Comprehensive API connection testing
 - Incremental synchronization using ModificationTimestamp for efficiency
@@ -56,12 +56,12 @@ This plugin replaces manual listing management by automatically fetching propert
 1. Upload the plugin files to `/wp-content/plugins/shift8-treb/`
 2. Activate the plugin through the WordPress admin interface
 3. Navigate to Shift8 > TREB Listings in the admin menu
-4. Configure your AMPRE API bearer token and sync preferences
+4. Configure your PropTx RESO Web API bearer token and sync preferences
 
 ## Configuration
 
 ### Required Settings
-- **Bearer Token**: Your AMPRE API authentication token (automatically encrypted)
+- **Bearer Token**: Your PropTx RESO Web API authentication token (automatically encrypted)
 - **Sync Frequency**: How often to check for new listings
 - **Max Listings Per Query**: API request batch size (1-1000)
 
@@ -289,7 +289,13 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.6.4 (Current)
+### Version 1.6.5 (Current)
+- **📝 Branding Update**: Updated all readme documentation
+  - Replaced "AMPRE" references with "PropTx RESO Web API"
+  - Improved documentation consistency and accuracy
+  - Reflects official API provider naming convention
+
+### Version 1.6.4
 - **📸 Conditional Publishing**: Intelligent image-based post status management
   - Posts remain as drafts if images fail to download
   - Prevents imageless listings from appearing on site
@@ -459,7 +465,7 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ### Version 1.0.0
 - Initial release
-- AMPRE API integration
+- PropTx RESO Web API integration
 - WordPress post creation
 - Administrative interface
 - WP-CLI command support
@@ -472,4 +478,4 @@ This plugin is licensed under the GPL v2 or later.
 
 ## Credits
 
-Developed by Shift8 Web for integration with the AMPRE API and Toronto Real Estate Board listing management.
+Developed by Shift8 Web for integration with the PropTx RESO Web API and Toronto Real Estate Board listing management.
