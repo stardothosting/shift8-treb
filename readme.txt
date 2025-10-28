@@ -288,4 +288,4 @@ This plugin connects to the PropTx RESO Web API to retrieve real estate listing 
 
 == Credits ==
 
-Developed by Shift8 Web for integration with the PropTx RESO Web API and Toronto Real Estate Board listing management.
+Developed by [Shift8 Web](https://shift8web.ca) for integration with the PropTx RESO Web API and Toronto Real Estate Board listing management.
