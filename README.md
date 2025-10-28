@@ -289,7 +289,7 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.6.3 (Current)
+### Version 1.6.4 (Current)
 - **📸 Conditional Publishing**: Intelligent image-based post status management
   - Posts remain as drafts if images fail to download
   - Prevents imageless listings from appearing on site
@@ -315,6 +315,15 @@ This plugin is built to meet WordPress.org plugin directory standards:
   - Fixed contributors list and external services documentation
   - Proper enqueue functions for CSS/JS assets
   - Enhanced code organization and maintainability
+
+### Version 1.6.3
+- **🔧 WordPress.org Compliance**: Plugin directory standards
+  - Fixed contributors list to 'shift8'
+  - Added comprehensive external services documentation
+  - Replaced inline CSS/JS with proper wp_enqueue functions
+  - Fixed transient prefixes to use proper plugin prefix
+  - Created dedicated frontend CSS file
+  - Improved WalkScore integration
 
 ### Version 1.6.2
 - **🔧 Critical Bug Fixes**: Comprehensive resolution of three major issues

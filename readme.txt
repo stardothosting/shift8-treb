@@ -4,7 +4,7 @@ Tags: real estate, listings, treb, ampre, mls
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.6.3
+Stable tag: 1.6.4
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -130,7 +130,7 @@ The plugin is designed for single-site installations. Multisite compatibility is
 
 == Changelog ==
 
-= 1.6.3 =
+= 1.6.4 =
 * **Conditional Publishing**: Posts now remain as drafts if images fail to download, preventing imageless listings from appearing on site
 * **Automatic Image Retry**: Failed images are automatically retried on subsequent syncs with intelligent status management
 * **Auto-Publish Functionality**: Draft posts automatically publish when images become available on retry
@@ -146,6 +146,15 @@ The plugin is designed for single-site installations. Multisite compatibility is
 * Created dedicated frontend CSS file for listing display
 * Improved WalkScore integration to comply with WordPress standards
 * Enhanced code organization and maintainability
+
+= 1.6.3 =
+* Fixed WordPress.org plugin directory compliance issues
+* Updated contributors list to 'shift8'
+* Replaced inline CSS/JS with proper wp_enqueue functions
+* Added comprehensive external services documentation
+* Fixed transient prefixes to use proper plugin prefix
+* Created dedicated frontend CSS file
+* Improved WalkScore integration
 
 = 1.6.2 =
 * Critical Bug Fixes: Comprehensive resolution of three major production issues
