@@ -120,6 +120,64 @@
     },
     "wordpressPluginDirectoryCompliance": {
         "description": "Ensure all code meets WordPress.org plugin directory automated checker requirements",
+        "inlineCssJsProhibition": {
+            "rule": "ABSOLUTELY NO inline CSS or JavaScript allowed in plugin files",
+            "rationale": "WordPress.org automated checker flags all inline <style> and <script> tags as violations",
+            "enforcement": "Use wp_enqueue_style() and wp_enqueue_script() with wp_add_inline_script() for dynamic content",
+            "violations": {
+                "inlineStyles": "Any <style> tags in PHP files, admin pages, or templates",
+                "inlineScripts": "Any <script> tags in PHP files, admin pages, or templates",
+                "dynamicCss": "CSS generated in PHP strings or echoed directly"
+            },
+            "solutions": {
+                "adminStyles": "Move all admin CSS to admin/css/admin.css and enqueue properly",
+                "frontendStyles": "Create public/css/frontend.css for frontend styles",
+                "dynamicJs": "Use wp_add_inline_script() with properly enqueued base script",
+                "conditionalEnqueue": "Only enqueue on relevant pages (is_single(), admin pages, etc.)"
+            },
+            "examples": {
+                "wrong": "<style>.my-class { color: red; }</style>",
+                "correct": "wp_enqueue_style('my-plugin-style', $url, array(), VERSION);"
+            }
+        },
+        "externalServicesDocumentation": {
+            "rule": "ALL external API calls must be documented in readme.txt with comprehensive details",
+            "requiredSection": "== External Services == section in readme.txt",
+            "requiredDetails": [
+                "Service name and purpose",
+                "What data is sent and when",
+                "Service provider information",
+                "Links to terms of service",
+                "Links to privacy policy",
+                "User control and configuration options"
+            ],
+            "format": "**Service Name** with bullet points for each detail",
+            "examples": {
+                "apiService": "**AMPRE API (Toronto Real Estate Board)** - Purpose, data sent, when used, provider, terms, privacy",
+                "geocoding": "**OpenStreetMap Nominatim API** - Purpose, data sent, when used, provider, usage policy, privacy"
+            }
+        },
+        "contributorsCompliance": {
+            "rule": "Contributors field must match actual WordPress.org usernames",
+            "validation": "Verify each contributor username exists on WordPress.org",
+            "format": "Contributors: username1, username2 (case-sensitive, comma-separated)",
+            "common_mistake": "Using company names or display names instead of actual usernames"
+        },
+        "prefixConsistency": {
+            "rule": "ALL plugin elements must use consistent, unique prefixes (minimum 4 characters)",
+            "elements": [
+                "Function names",
+                "Class names", 
+                "Constants",
+                "Options and transients",
+                "Database tables",
+                "CSS classes",
+                "JavaScript variables",
+                "AJAX actions"
+            ],
+            "prefix": "shift8_treb_ for this plugin",
+            "validation": "Automated checker scans for generic names and prefix violations"
+        },
         "securityRequirements": {
             "outputEscaping": {
                 "rule": "ALL output must be escaped using appropriate WordPress functions",

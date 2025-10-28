@@ -513,10 +513,9 @@ class PostManagerTest extends TestCase {
 
         $result = $method->invoke($post_manager, $listing);
 
-        $this->assertStringContainsString('ws_wsid = \'test_ws_id\'', $result);
-        $this->assertStringContainsString('walkscore.com', $result);
-        $this->assertStringContainsString('123', $result); // Street number
-        $this->assertStringContainsString('Main Street', $result); // Street name
+        // WalkScore now only returns a div - scripts are enqueued separately for WordPress.org compliance
+        $this->assertStringContainsString('<div id="ws-walkscore-tile"></div>', $result);
+        $this->assertEquals('<div id="ws-walkscore-tile"></div>', $result);
     }
 
     /**
@@ -748,7 +747,7 @@ class PostManagerTest extends TestCase {
         // Mock transient functions to simulate recent request
         $call_count = 0;
         Functions\when('get_transient')->alias(function($key) use (&$call_count) {
-            if ($key === 'treb_osm_last_request') {
+            if ($key === 'shift8_treb_osm_last_request') {
                 $call_count++;
                 if ($call_count === 1) {
                     return time(); // Simulate recent request
@@ -888,7 +887,7 @@ class PostManagerTest extends TestCase {
         // Test cache hit
         $cached_coordinates = array('lat' => 43.6532, 'lng' => -79.3832);
         Functions\when('get_transient')->alias(function($key) use ($cached_coordinates) {
-            if (strpos($key, 'treb_geocode_') === 0) {
+            if (strpos($key, 'shift8_treb_geocode_') === 0) {
                 return $cached_coordinates;
             }
             return false;

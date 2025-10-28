@@ -1,10 +1,10 @@
 === Shift8 Real Estate Listings for TREB ===
-Contributors: shift8web
+Contributors: shift8
 Tags: real estate, listings, treb, ampre, mls
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.6.2
+Stable tag: 1.6.3
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -53,6 +53,44 @@ Shift8 TREB Real Estate Listings is a comprehensive WordPress plugin that automa
 5. Set up your listing template with the provided placeholders
 6. Run your first sync manually or wait for the scheduled sync
 
+== External Services ==
+
+This plugin connects to several external services to provide real estate listing functionality:
+
+**AMPRE API (Toronto Real Estate Board)**
+- **Purpose**: Retrieves real estate listing data from the Toronto Real Estate Board (TREB) MLS system
+- **Data Sent**: API authentication token, search parameters, listing filters
+- **When**: During scheduled syncs and manual data imports
+- **Service Provider**: AMPRE (query.ampre.ca)
+- **Terms of Service**: https://www.ampre.ca/terms-of-service
+- **Privacy Policy**: https://www.ampre.ca/privacy-policy
+
+**OpenStreetMap Nominatim API**
+- **Purpose**: Geocodes property addresses to obtain latitude/longitude coordinates for mapping
+- **Data Sent**: Property addresses (street, city, province, postal code)
+- **When**: When processing new listings or updating existing ones
+- **Service Provider**: OpenStreetMap Foundation (nominatim.openstreetmap.org)
+- **Usage Policy**: https://operations.osmfoundation.org/policies/nominatim/
+- **Privacy Policy**: https://wiki.osmfoundation.org/wiki/Privacy_Policy
+
+**Google Maps API (Optional)**
+- **Purpose**: Displays interactive maps for property locations
+- **Data Sent**: Property coordinates, API key
+- **When**: When viewing individual listing pages (if Google Maps API key is configured)
+- **Service Provider**: Google LLC
+- **Terms of Service**: https://developers.google.com/maps/terms
+- **Privacy Policy**: https://policies.google.com/privacy
+
+**WalkScore API (Optional)**
+- **Purpose**: Displays walkability scores and neighborhood information
+- **Data Sent**: Property address, WalkScore ID
+- **When**: When viewing individual listing pages (if WalkScore credentials are configured)
+- **Service Provider**: WalkScore.com
+- **Terms of Service**: https://www.walkscore.com/terms-of-use/
+- **Privacy Policy**: https://www.walkscore.com/privacy/
+
+All external service connections are made server-to-server and do not directly collect visitor data. Property addresses and coordinates are only sent to mapping services when explicitly configured by the site administrator.
+
 == Frequently Asked Questions ==
 
 = Do I need an AMPRE API account? =
@@ -91,6 +129,16 @@ The plugin is designed for single-site installations. Multisite compatibility is
 4. Quick stats widget displaying sync status and listing counts
 
 == Changelog ==
+
+= 1.6.3 =
+* Fixed WordPress.org plugin directory compliance issues
+* Updated contributors list to 'shift8'
+* Replaced inline CSS/JS with proper wp_enqueue functions for better performance
+* Added comprehensive external services documentation
+* Fixed transient prefixes to use proper plugin prefix (shift8_treb_)
+* Created dedicated frontend CSS file for listing display
+* Improved WalkScore integration to comply with WordPress standards
+* Enhanced code organization and maintainability
 
 = 1.6.2 =
 * Critical Bug Fixes: Comprehensive resolution of three major production issues

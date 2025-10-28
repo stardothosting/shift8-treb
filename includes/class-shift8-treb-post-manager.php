@@ -2250,136 +2250,7 @@ class Shift8_TREB_Post_Manager {
             <h3>Contact Information</h3>
         </div>
     </div>
-</div>
-
-<!-- Modern CSS Styles -->
-<style>
-.treb-listing-container {
-    max-width: 1200px;
-    margin: 0 auto;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
-
-.treb-hero-section {
-    position: relative;
-    margin-bottom: 2rem;
-}
-
-.treb-price-overlay {
-    position: absolute;
-    bottom: 20px;
-    left: 20px;
-    background: rgba(0, 0, 0, 0.8);
-    color: white;
-    padding: 1rem;
-    border-radius: 8px;
-}
-
-.treb-price {
-    margin: 0;
-    font-size: 2rem;
-    font-weight: bold;
-}
-
-.treb-mls {
-    margin: 0.5rem 0 0 0;
-    opacity: 0.9;
-}
-
-.treb-property-header {
-    text-align: center;
-    margin-bottom: 2rem;
-}
-
-.treb-address {
-    font-size: 2.5rem;
-    margin-bottom: 1rem;
-    color: #333;
-}
-
-.treb-quick-stats {
-    display: flex;
-    justify-content: center;
-    gap: 2rem;
-    flex-wrap: wrap;
-}
-
-.treb-stat {
-    background: #f8f9fa;
-    padding: 0.5rem 1rem;
-    border-radius: 20px;
-    border: 2px solid #0477a6;
-}
-
-.treb-gallery-section {
-    margin-bottom: 2rem;
-}
-
-.treb-details-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1rem;
-    margin-bottom: 2rem;
-}
-
-.treb-detail-item {
-    background: #f8f9fa;
-    padding: 1rem;
-    border-radius: 8px;
-    border-left: 4px solid #0477a6;
-}
-
-.treb-description-section {
-    background: white;
-    padding: 2rem;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    margin-bottom: 2rem;
-}
-
-.treb-description-content {
-    line-height: 1.6;
-    font-size: 1.1rem;
-}
-
-.treb-contact-section {
-    background: #0477a6;
-    color: white;
-    padding: 2rem;
-    border-radius: 8px;
-    text-align: center;
-}
-
-.treb-virtual-tour-link {
-    display: inline-block;
-    background: #28a745;
-    color: white;
-    padding: 0.75rem 1.5rem;
-    text-decoration: none;
-    border-radius: 5px;
-    font-weight: bold;
-    margin-top: 1rem;
-}
-
-.treb-virtual-tour-link:hover {
-    background: #218838;
-    color: white;
-}
-
-@media (max-width: 768px) {
-    .treb-address {
-        font-size: 1.8rem;
-    }
-    
-    .treb-quick-stats {
-        gap: 1rem;
-    }
-    
-    .treb-details-grid {
-        grid-template-columns: 1fr;
-    }
-}
-</style>';
+</div>';
     }
 
     /**
@@ -2478,25 +2349,8 @@ class Shift8_TREB_Post_Manager {
         $province = isset($listing['StateOrProvince']) ? sanitize_text_field($listing['StateOrProvince']) : 'ON';
         $country = 'Canada';
         
-        // Generate WalkScore widget code (matching Python script format)
-        $walkscore_code = sprintf("
-<script type='text/javascript'>
-var ws_wsid = '%s';
-var ws_address = '%s %s %s, %s, %s, %s'
-var ws_format = 'square';
-var ws_width = '300';
-var ws_height = '300';
-</script><style type='text/css'>#ws-walkscore-tile{position:relative;text-align:left}#ws-walkscore-tile *{float:none;}</style><div id='ws-walkscore-tile'></div><script type='text/javascript' src='https://www.walkscore.com/tile/show-walkscore-tile.php'></script>",
-            esc_js($this->settings['walkscore_id']),
-            esc_js($street_number),
-            esc_js($street_name),
-            esc_js($street_suffix),
-            esc_js($municipality),
-            esc_js($province),
-            esc_js($country)
-        );
-        
-        return $walkscore_code;
+        // Return only the div - WalkScore scripts are enqueued properly in the main plugin file
+        return '<div id="ws-walkscore-tile"></div>';
     }
 
     /**
@@ -2572,7 +2426,7 @@ var ws_height = '300';
      */
     private function geocode_address($address) {
         // Check cache first (to avoid repeated API calls for same address)
-        $cache_key = 'treb_geocode_' . md5($address);
+        $cache_key = 'shift8_treb_geocode_' . md5($address);
         $cached_result = get_transient($cache_key);
         if ($cached_result !== false) {
             shift8_treb_log('Using cached geocoding result', array(
@@ -2624,7 +2478,7 @@ var ws_height = '300';
 
         // Respect OpenStreetMap's 1 request per second rate limit
         // Store last request time to ensure we don't exceed rate limits
-        $last_request_time = get_transient('treb_osm_last_request');
+        $last_request_time = get_transient('shift8_treb_osm_last_request');
         if ($last_request_time !== false) {
             $time_since_last = time() - $last_request_time;
             if ($time_since_last < 1) {
@@ -2639,7 +2493,7 @@ var ws_height = '300';
         }
         
         // Record this request time (expires after 2 minutes to handle edge cases)
-        set_transient('treb_osm_last_request', time(), 2 * 60);
+        set_transient('shift8_treb_osm_last_request', time(), 2 * 60);
 
         shift8_treb_log('Making OpenStreetMap geocoding request', array(
             'attempt' => "{$attempt_number}/{$total_attempts}",

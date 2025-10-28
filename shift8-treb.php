@@ -3,7 +3,7 @@
  * Plugin Name: Shift8 Real Estate Listings for TREB
  * Plugin URI: https://github.com/stardothosting/shift8-treb
  * Description: Integrates Toronto Real Estate Board (TREB) listings via AMPRE API, automatically importing property listings into WordPress. Replaces the Python script with native WordPress functionality.
- * Version: 1.6.2
+ * Version: 1.6.3
  * Author: Shift8 Web
  * Author URI: https://shift8web.ca
  * Text Domain: shift8-real-estate-listings-for-treb
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('SHIFT8_TREB_VERSION', '1.6.2');
+define('SHIFT8_TREB_VERSION', '1.6.3');
 define('SHIFT8_TREB_PLUGIN_FILE', __FILE__);
 define('SHIFT8_TREB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('SHIFT8_TREB_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -199,6 +199,9 @@ class Shift8_TREB {
         
         // Hook for WalkScore script enqueue
         add_action('wp_enqueue_scripts', array($this, 'enqueue_walkscore_scripts'));
+        
+        // Hook for frontend styles
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_styles'));
     }
     
     /**
@@ -751,6 +754,25 @@ document.getElementsByTagName('head')[0].appendChild(style);",
         );
         
         wp_add_inline_script('shift8-treb-walkscore-api', $walkscore_script, 'before');
+    }
+
+    /**
+     * Enqueue frontend styles for listing display
+     *
+     * @since 1.6.3
+     */
+    public function enqueue_frontend_styles() {
+        // Only enqueue on single posts that are TREB listings
+        if (!is_single() || !shift8_treb_is_listing_post()) {
+            return;
+        }
+
+        wp_enqueue_style(
+            'shift8-treb-frontend',
+            SHIFT8_TREB_PLUGIN_URL . 'public/css/frontend.css',
+            array(),
+            SHIFT8_TREB_VERSION
+        );
     }
     
     /**
