@@ -1,10 +1,10 @@
 === Shift8 Real Estate Listings for TRREB ===
 Contributors: shift8
-Tags: real estate, listings, proptx, tr, mlstr
+Tags: real estate, listings, proptx, trreb, mlstr
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.6.5
+Stable tag: 1.6.6
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -131,6 +131,11 @@ The plugin is designed for single-site installations. Multisite compatibility is
 4. Quick stats widget displaying sync status and listing counts
 
 == Changelog ==
+
+= 1.6.6 =
+* **Documentation Enhancement**: Added prominent blog post link with technical implementation details
+* **Tag Optimization**: Updated WordPress.org tags for better plugin discoverability (trreb, mlstr)
+* **Improved Credits**: Added clickable link to Shift8 Web website in credits section
 
 = 1.6.5 =
 * **Branding Update**: Replaced all mentions of "AMPRE" with "PropTx RESO Web API" in documentation

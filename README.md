@@ -291,7 +291,15 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.6.5 (Current)
+### Version 1.6.6 (Current)
+- **📖 Documentation Enhancement**: Added blog post link
+  - Prominent link to technical blog post about RETS to RESO migration
+  - Provides detailed implementation insights and PropTx integration details
+  - Links to: https://shift8web.ca/how-to-import-trreb-proptx-real-estate-listings-into-your-wordpress-site/
+- **🏷️ Tag Optimization**: Updated WordPress.org tags for better discoverability
+- **🔗 Enhanced Credits**: Added clickable link to Shift8 Web website
+
+### Version 1.6.5
 - **📝 Branding Update**: Updated all readme documentation
   - Replaced "AMPRE" references with "PropTx RESO Web API"
   - Improved documentation consistency and accuracy
