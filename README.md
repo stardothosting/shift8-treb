@@ -1,6 +1,6 @@
 # Shift8 Real Estate Listings for TRREB
 
-A WordPress plugin that synchronizes real estate listings from the Toronto Real Estate Board (TREB) via the PropTx RESO Web API and automatically creates WordPress posts for property listings.
+A WordPress plugin that synchronizes real estate listings from the Toronto Regional Real Estate Board (TRREB) via the PropTx RESO Web API and automatically creates WordPress posts for property listings. TRREB was formerly called TREB (Toronto Real Estate Board).
 
 ## Overview
 

@@ -8,7 +8,7 @@ Stable tag: 1.6.6
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
-Automatically synchronize Toronto Real Estate Board (TREB) listings via PropTx RESO Web API and create WordPress posts for property listings.
+Automatically synchronize Toronto Regional Real Estate Board (TRREB), listings via PropTx RESO Web API and create WordPress posts for property listings. TRREB was formerly called TREB (Toronto Real Estate Board).
 
 == Description ==
 
