@@ -186,6 +186,9 @@ class Shift8_TREB {
         // Cron hooks for TREB data synchronization
         add_action('shift8_treb_sync_listings', array($this, 'sync_listings_cron'));
         
+        // Cron hook for cleanup of terminated listings
+        add_action('shift8_treb_cleanup_terminated', array($this, 'cleanup_terminated_listings_cron'));
+        
         // Admin hooks - register settings on admin_init regardless of is_admin() check
         add_action('admin_init', array($this, 'register_settings'));
         
@@ -431,6 +434,30 @@ class Shift8_TREB {
     }
     
     /**
+     * Schedule terminated listings cleanup
+     *
+     * Separate job that runs weekly to query API for terminated listings
+     * and remove matching WordPress posts
+     *
+     * @since 1.6.7
+     */
+    public function schedule_cleanup() {
+        // Schedule cleanup to run weekly
+        // Queries API for terminated/cancelled listings (up to 200)
+        // Then checks if those MLS numbers exist in WordPress and removes them
+        if (!wp_next_scheduled('shift8_treb_cleanup_terminated')) {
+            wp_schedule_event(time(), 'weekly', 'shift8_treb_cleanup_terminated');
+            
+            shift8_treb_log('TREB cleanup scheduled', array(
+                'frequency' => 'weekly',
+                'next_run' => wp_next_scheduled('shift8_treb_cleanup_terminated')
+            ));
+        }
+        
+        return true;
+    }
+    
+    /**
      * Manage cron scheduling based on plugin state
      * 
      * Following shift8-zoom pattern for proper cron management
@@ -536,6 +563,39 @@ class Shift8_TREB {
     }
     
     /**
+     * Cron job handler for terminated listings cleanup
+     * 
+     * Runs weekly to query API for terminated/cancelled listings
+     * and remove any matching WordPress posts
+     *
+     * @since 1.6.7
+     */
+    public function cleanup_terminated_listings_cron() {
+        shift8_treb_log('=== WEEKLY CLEANUP JOB STARTED ===', array(), 'info');
+        
+        try {
+            // Include and initialize sync service
+            require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-sync-service.php';
+            $sync_service = new Shift8_TREB_Sync_Service();
+            
+            // Execute cleanup using the sync service method
+            $results = $sync_service->cleanup_terminated_listings();
+            
+            shift8_treb_log('=== WEEKLY CLEANUP JOB COMPLETED ===', array(
+                'api_terminated_count' => $results['api_terminated_count'],
+                'checked' => $results['checked'],
+                'removed' => $results['removed'],
+                'errors' => $results['errors']
+            ), 'info');
+
+        } catch (Exception $e) {
+            shift8_treb_log('Weekly cleanup job failed', array(
+                'error' => esc_html($e->getMessage())
+            ), 'error');
+        }
+    }
+    
+    /**
      * Plugin activation
      *
      * Sets up default options and performs initial setup.
@@ -570,6 +630,9 @@ class Shift8_TREB {
         // Schedule the sync cron job
         $this->schedule_sync();
         
+        // Schedule the cleanup cron job (separate from sync)
+        $this->schedule_cleanup();
+        
         shift8_treb_log('Plugin activated');
     }
     
@@ -583,6 +646,7 @@ class Shift8_TREB {
     public function deactivate() {
         // Clear scheduled events
         wp_clear_scheduled_hook('shift8_treb_sync_listings');
+        wp_clear_scheduled_hook('shift8_treb_cleanup_terminated');
         
         // Flush rewrite rules
         flush_rewrite_rules();

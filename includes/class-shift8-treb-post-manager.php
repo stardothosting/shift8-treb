@@ -585,7 +585,7 @@ class Shift8_TREB_Post_Manager {
      */
     private function create_listing_post($listing, $post_status = 'publish') {
         // Prepare post data
-        $post_title = sanitize_text_field($listing['UnparsedAddress']);
+        $post_title = $this->generate_post_title($listing);
         $post_content = $this->generate_post_content($listing);
         $post_excerpt = $this->generate_post_excerpt($listing);
         $category_id = $this->get_listing_category_id($listing);
@@ -695,6 +695,18 @@ class Shift8_TREB_Post_Manager {
      * @return string Post title
      */
     private function generate_post_title($listing) {
+        // Get transaction type for prefix
+        $transaction_type = isset($listing['TransactionType']) ? $listing['TransactionType'] : '';
+        $prefix = '';
+        
+        if ($transaction_type === 'For Sale') {
+            $prefix = 'For Sale: ';
+        } elseif ($transaction_type === 'For Lease') {
+            $prefix = 'For Lease: ';
+        } elseif ($transaction_type === 'For Sale or Lease') {
+            $prefix = 'For Sale or Lease: ';
+        }
+        
         $address = sanitize_text_field($listing['UnparsedAddress']);
         $city = isset($listing['City']) ? sanitize_text_field($listing['City']) : '';
         $province = isset($listing['StateOrProvince']) ? sanitize_text_field($listing['StateOrProvince']) : '';
@@ -707,7 +719,7 @@ class Shift8_TREB_Post_Manager {
             $title_parts[] = $province;
         }
 
-        return implode(', ', $title_parts);
+        return $prefix . implode(', ', $title_parts);
     }
 
     /**

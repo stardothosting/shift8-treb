@@ -276,6 +276,9 @@ class Shift8_TREB_Sync_Service {
                 }
             }
 
+            // Note: Cleanup of terminated listings is handled by separate weekly cron job
+            // to avoid impacting sync performance
+
             // Update last sync timestamp (only if not dry run)
             if (!$dry_run) {
                 $current_timestamp = current_time('c'); // ISO 8601 format
@@ -333,5 +336,173 @@ class Shift8_TREB_Sync_Service {
         
         // Reinitialize services with new settings
         $this->initialize_services();
+    }
+
+    /**
+     * Query API for terminated/cancelled listings and remove matching WordPress posts
+     * 
+     * This queries the API specifically for Cancelled/Expired/Terminated listings,
+     * then checks if any of those MLS numbers exist in WordPress and removes them.
+     * 
+     * Runs weekly to reduce API load.
+     *
+     * @since 1.6.7
+     * @return array Cleanup results
+     */
+    public function cleanup_terminated_listings() {
+        $results = array(
+            'api_terminated_count' => 0,
+            'checked' => 0,
+            'removed' => 0,
+            'errors' => 0
+        );
+
+        try {
+            shift8_treb_log('Starting terminated listings cleanup', array(), 'info');
+            
+            // Query API for terminated/cancelled listings
+            // Build a query that specifically targets terminated statuses
+            $terminated_listings = $this->fetch_terminated_listings_from_api();
+            
+            if (empty($terminated_listings)) {
+                shift8_treb_log('No terminated listings found in API', array(), 'info');
+                return $results;
+            }
+            
+            $results['api_terminated_count'] = count($terminated_listings);
+            
+            // Extract MLS numbers from terminated listings
+            $terminated_mls_numbers = array();
+            foreach ($terminated_listings as $listing) {
+                if (!empty($listing['ListingKey'])) {
+                    $terminated_mls_numbers[] = sanitize_text_field($listing['ListingKey']);
+                }
+            }
+            
+            if (empty($terminated_mls_numbers)) {
+                return $results;
+            }
+            
+            shift8_treb_log('Found terminated listings in API', array(
+                'count' => count($terminated_mls_numbers)
+            ), 'info');
+
+            // Now check which of these terminated MLS numbers exist in WordPress
+            foreach ($terminated_mls_numbers as $mls_number) {
+                $results['checked']++;
+                
+                // Find WordPress post with this MLS number
+                $args = array(
+                    'post_type' => 'post',
+                    'post_status' => 'publish',
+                    'posts_per_page' => 1,
+                    'meta_query' => array(
+                        array(
+                            'key' => 'shift8_treb_listing_key',
+                            'value' => $mls_number,
+                            'compare' => '='
+                        )
+                    )
+                );
+                
+                $posts = get_posts($args);
+                
+                if (!empty($posts)) {
+                    foreach ($posts as $post) {
+                        wp_trash_post($post->ID);
+                        $results['removed']++;
+                        shift8_treb_log('Removed terminated listing', array(
+                            'post_id' => $post->ID,
+                            'mls_number' => esc_html($mls_number)
+                        ), 'info');
+                    }
+                }
+            }
+
+        } catch (Exception $e) {
+            $results['errors']++;
+            shift8_treb_log('Error during terminated listings cleanup', array(
+                'error' => esc_html($e->getMessage())
+            ), 'error');
+        }
+
+        return $results;
+    }
+    
+    /**
+     * Fetch terminated/cancelled listings from AMPRE API
+     * 
+     * Queries specifically for Cancelled, Expired, Withdrawn, and Terminated listings
+     * Returns up to 200 results
+     *
+     * @since 1.6.7
+     * @return array Array of terminated listings
+     */
+    private function fetch_terminated_listings_from_api() {
+        try {
+            // Build a custom query for terminated listings only
+            $terminated_statuses = array('Cancelled', 'Expired', 'Withdrawn', 'Terminated');
+            
+            // Build OData filter for terminated statuses
+            $status_filters = array();
+            foreach ($terminated_statuses as $status) {
+                $status_filters[] = "StandardStatus eq '" . $status . "'";
+            }
+            $filter = '(' . implode(' or ', $status_filters) . ')';
+            
+            // Add time filter - only check listings modified in last 30 days
+            // (listings terminated more than 30 days ago are unlikely to still be on the site)
+            $thirty_days_ago = gmdate('Y-m-d\TH:i:s\Z', strtotime('-30 days'));
+            $filter .= " and ModificationTimestamp ge " . $thirty_days_ago;
+            
+            $query_params = array(
+                '$filter=' . $filter,
+                '$top=200', // Limit to 200 terminated listings
+                '$orderby=ModificationTimestamp desc'
+            );
+            
+            $endpoint = 'Property?' . implode('&', $query_params);
+            
+            shift8_treb_log('Querying API for terminated listings', array(
+                'endpoint' => esc_html($endpoint)
+            ), 'info');
+            
+            // Use reflection to call the private make_request method
+            $reflection = new ReflectionClass($this->ampre_service);
+            $method = $reflection->getMethod('make_request');
+            $method->setAccessible(true);
+            $response = $method->invoke($this->ampre_service, $endpoint);
+            
+            if (is_wp_error($response)) {
+                shift8_treb_log('Failed to fetch terminated listings', array(
+                    'error' => esc_html($response->get_error_message())
+                ), 'error');
+                return array();
+            }
+            
+            $response_code = wp_remote_retrieve_response_code($response);
+            if ($response_code !== 200) {
+                shift8_treb_log('API returned non-200 status for terminated listings', array(
+                    'status_code' => $response_code
+                ), 'error');
+                return array();
+            }
+            
+            $response_body = wp_remote_retrieve_body($response);
+            $data = json_decode($response_body, true);
+            
+            if (json_last_error() !== JSON_ERROR_NONE || !isset($data['value'])) {
+                shift8_treb_log('Invalid JSON response for terminated listings', array(), 'error');
+                return array();
+            }
+            
+            return $data['value'];
+            
+        } catch (Exception $e) {
+            shift8_treb_log('Exception fetching terminated listings', array(
+                'error' => esc_html($e->getMessage())
+            ), 'error');
+            return array();
+        }
     }
 }

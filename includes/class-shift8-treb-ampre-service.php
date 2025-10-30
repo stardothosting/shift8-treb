@@ -188,9 +188,15 @@ class Shift8_TREB_AMPRE_Service {
         // Add filters based on settings
         $filters = array();
 
-        // Include both available and sold listings for processing
-        // Available listings for new imports, sold listings for status updates
-        $filters[] = "(ContractStatus eq 'Available' or ContractStatus eq 'Sold' or ContractStatus eq 'Closed')";
+        // Filter by StandardStatus to exclude terminated/cancelled listings
+        // Active: Currently available listings
+        // Pending: Under contract/conditional
+        // Closed: Recently sold (for status updates)
+        // Exclude: Cancelled, Expired, Withdrawn, Terminated
+        $filters[] = "(StandardStatus eq 'Active' or StandardStatus eq 'Pending' or StandardStatus eq 'Closed')";
+        
+        // Additional safety check: exclude explicitly unavailable listings
+        $filters[] = "ContractStatus ne 'Unavailable'";
         
         // Add ModificationTimestamp filter for incremental sync
         if (!empty($this->settings['last_sync_timestamp'])) {
@@ -214,6 +220,20 @@ class Shift8_TREB_AMPRE_Service {
                 }
                 $filters[] = '(' . implode(' or ', $member_filters) . ')';
             }
+        }
+
+        // Add TransactionType filter if specified
+        // Options: 'For Sale', 'For Lease', 'For Sale or Lease', or empty for all
+        if (!empty($this->settings['transaction_type_filter'])) {
+            $transaction_type = sanitize_text_field($this->settings['transaction_type_filter']);
+            if ($transaction_type === 'For Sale') {
+                $filters[] = "TransactionType eq 'For Sale'";
+            } elseif ($transaction_type === 'For Lease') {
+                $filters[] = "TransactionType eq 'For Lease'";
+            } elseif ($transaction_type === 'For Sale or Lease') {
+                $filters[] = "TransactionType eq 'For Sale or Lease'";
+            }
+            // If 'all' or any other value, don't add filter
         }
 
         // Combine filters

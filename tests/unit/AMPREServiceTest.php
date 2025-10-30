@@ -261,8 +261,13 @@ class AMPREServiceTest extends TestCase {
         
         $this->assertIsString($params);
         
-        // Test that ContractStatus filter is included
-        $this->assertStringContainsString("ContractStatus eq 'Available'", $params);
+        // Test that StandardStatus filter is included (new filter format)
+        $this->assertStringContainsString("StandardStatus eq 'Active'", $params);
+        $this->assertStringContainsString("StandardStatus eq 'Pending'", $params);
+        $this->assertStringContainsString("StandardStatus eq 'Closed'", $params);
+        
+        // Test that ContractStatus exclusion is included
+        $this->assertStringContainsString("ContractStatus ne 'Unavailable'", $params);
         
         // Test that listing age filter is included (30 days ago)
         $this->assertStringContainsString("ModificationTimestamp ge", $params);
@@ -298,8 +303,11 @@ class AMPREServiceTest extends TestCase {
         
         $this->assertIsString($params);
         
-        // Should still have ContractStatus filter
-        $this->assertStringContainsString("ContractStatus eq 'Available'", $params);
+        // Should still have StandardStatus filter (new format)
+        $this->assertStringContainsString("StandardStatus eq 'Active'", $params);
+        
+        // Should still have ContractStatus exclusion
+        $this->assertStringContainsString("ContractStatus ne 'Unavailable'", $params);
         
         // Should have correct top value
         $this->assertStringContainsString('$top=50', $params);
@@ -396,7 +404,8 @@ class AMPREServiceTest extends TestCase {
         
         // Test that listing age filter is included
         $this->assertStringContainsString('ModificationTimestamp ge', $params);
-        $this->assertStringContainsString('ContractStatus eq \'Available\'', $params);
+        $this->assertStringContainsString('StandardStatus eq \'Active\'', $params);
+        $this->assertStringContainsString('ContractStatus ne \'Unavailable\'', $params);
     }
 
 
@@ -572,7 +581,8 @@ class AMPREServiceTest extends TestCase {
         $this->assertStringContainsString('ListAgentKey eq \'2229166\'', $query_params, 'Should filter for first member ID');
         $this->assertStringContainsString('ListAgentKey eq \'9580044\'', $query_params, 'Should filter for second member ID');
         $this->assertStringContainsString(' or ', $query_params, 'Should use OR logic for multiple member IDs');
-        $this->assertStringContainsString('ContractStatus eq \'Available\'', $query_params, 'Should still include status filter');
+        $this->assertStringContainsString('StandardStatus eq \'Active\'', $query_params, 'Should still include status filter');
+        $this->assertStringContainsString('ContractStatus ne \'Unavailable\'', $query_params, 'Should exclude unavailable listings');
     }
 
     /**
@@ -597,7 +607,8 @@ class AMPREServiceTest extends TestCase {
         
         // Should NOT contain member ID filter when member_id is empty
         $this->assertStringNotContainsString('ListAgentKey', $query_params, 'Should not filter by member ID when none configured');
-        $this->assertStringContainsString('ContractStatus eq \'Available\'', $query_params, 'Should still include status filter');
+        $this->assertStringContainsString('StandardStatus eq \'Active\'', $query_params, 'Should still include status filter');
+        $this->assertStringContainsString('ContractStatus ne \'Unavailable\'', $query_params, 'Should exclude unavailable listings');
     }
 
     /**
@@ -622,7 +633,8 @@ class AMPREServiceTest extends TestCase {
         
         // Should NOT contain member ID filter when members_only is false
         $this->assertStringNotContainsString('ListAgentKey', $query_params, 'Should not filter by member ID when members_only is false');
-        $this->assertStringContainsString('ContractStatus eq \'Available\'', $query_params, 'Should still include status filter');
+        $this->assertStringContainsString('StandardStatus eq \'Active\'', $query_params, 'Should still include status filter');
+        $this->assertStringContainsString('ContractStatus ne \'Unavailable\'', $query_params, 'Should exclude unavailable listings');
     }
 
     /**
@@ -725,10 +737,11 @@ class AMPREServiceTest extends TestCase {
         
         $query_params = $method->invoke($ampre_service);
         
-        // Should include available, sold, and closed listings
-        $this->assertStringContainsString('ContractStatus eq \'Available\'', $query_params, 'Should include available listings');
-        $this->assertStringContainsString('ContractStatus eq \'Sold\'', $query_params, 'Should include sold listings');
-        $this->assertStringContainsString('ContractStatus eq \'Closed\'', $query_params, 'Should include closed listings');
+        // Should include active, pending, and closed listings (new filter format using StandardStatus)
+        $this->assertStringContainsString('StandardStatus eq \'Active\'', $query_params, 'Should include active listings');
+        $this->assertStringContainsString('StandardStatus eq \'Pending\'', $query_params, 'Should include pending listings');  
+        $this->assertStringContainsString('StandardStatus eq \'Closed\'', $query_params, 'Should include closed listings');
+        $this->assertStringContainsString('ContractStatus ne \'Unavailable\'', $query_params, 'Should exclude unavailable listings');
         $this->assertStringContainsString(' or ', $query_params, 'Should use OR logic for status values');
     }
 
