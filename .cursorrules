@@ -1762,5 +1762,128 @@
                 "Set expectations about automatic resolution"
             ]
         }
+    },
+    "apiResponseComparisonAntiPattern": {
+        "description": "CRITICAL LESSON: Never compare API response to WordPress posts for cleanup decisions",
+        "learnedDate": "2025-10-30",
+        "problem": {
+            "rule": "NEVER compare what's in API response vs what's in WordPress to determine what to delete",
+            "reasoning": "API responses are LIMITED and FILTERED - they don't contain ALL listings",
+            "examples": [
+                "API query limited to 100-1000 listings (not entire MLS database)",
+                "API filtered by listing_age_days (e.g., only last 30 days)",
+                "API filtered by ModificationTimestamp (incremental sync)",
+                "API filtered by member_id (only specific agents)",
+                "API filtered by transaction_type (sale vs lease)"
+            ],
+            "consequences": "Comparing API response to WordPress posts would DELETE valid old listings that simply weren't in that specific limited query"
+        },
+        "correctApproach": {
+            "rule": "Query API specifically for terminated/cancelled listings, then check if those exist in WordPress",
+            "implementation": [
+                "Query API with: StandardStatus eq 'Cancelled' or 'Expired' or 'Withdrawn' or 'Terminated'",
+                "Limit to recent modifications (last 30 days) for performance",
+                "Get up to 200 terminated listings",
+                "For each terminated MLS number, check if it exists as WordPress post",
+                "Only remove posts that ARE in the terminated list"
+            ],
+            "benefits": [
+                "Only 1 API query instead of 200 individual queries",
+                "Removes confirmed terminated listings",
+                "Never accidentally deletes valid active listings",
+                "Performance efficient (weekly vs daily)"
+            ]
+        },
+        "preventionChecklist": [
+            "✓ Never use in_array($mls, $api_response_mls_numbers) to determine deletions",
+            "✓ Never assume API response contains ALL listings",
+            "✓ Always query API for SPECIFIC statuses you want to act on",
+            "✓ Always consider API query limits and filters",
+            "✓ Test logic with: 'What if API only returns 50 of 500 total listings?'"
+        ]
+    },
+    "terminatedListingsCleanupPatterns": {
+        "description": "Best practices for handling terminated/cancelled/expired real estate listings",
+        "learnedDate": "2025-10-30",
+        "preventionAtApiLevel": {
+            "rule": "Use StandardStatus filter to prevent importing terminated listings",
+            "implementation": "StandardStatus eq 'Active' or 'Pending' or 'Closed' (NOT Cancelled/Expired/Withdrawn/Terminated)",
+            "additionalSafety": "ContractStatus ne 'Unavailable' as secondary filter",
+            "benefits": "Prevents terminated listings from ever being imported"
+        },
+        "weeklyCleanupJob": {
+            "rule": "Separate weekly cron job to remove terminated listings that slip through",
+            "frequency": "Weekly (not daily) for performance optimization",
+            "apiQuery": "Query for terminated statuses modified in last 30 days (up to 200)",
+            "wordpressQuery": "For each terminated MLS, check if exists in WordPress and remove",
+            "performance": "1 API query/week vs 200 queries/day (1400x reduction)",
+            "schedule": "Use WordPress cron 'weekly' schedule independently from main sync"
+        },
+        "implementation": {
+            "apiFilterAtSync": "Prevent import at source with StandardStatus filter",
+            "separateCleanupJob": "Independent weekly job queries API for terminated listings specifically",
+            "queryOptimization": "Limit to last 30 days, up to 200 results, single API call",
+            "wordpressCleanup": "Loop through terminated MLS numbers, check WordPress, remove if exists"
+        }
+    },
+    "transactionTypeDualListingsPattern": {
+        "description": "Handle real-world scenario where same property listed for both sale and lease",
+        "learnedDate": "2025-10-30",
+        "realWorldScenario": {
+            "problem": "Same address appears twice: once as 'For Sale' ($500k) and once as 'For Lease' ($2500/mo)",
+            "mlsNumbers": "Different MLS numbers (e.g., W12364279 for sale, W12364198 for lease)",
+            "cause": "Agent lists property for both purchase and rental simultaneously"
+        },
+        "solution": {
+            "titleDifferentiation": "Prefix post titles with transaction type",
+            "examples": [
+                "For Sale: 123 Main Street, Toronto, ON",
+                "For Lease: 123 Main Street, Toronto, ON",
+                "For Sale or Lease: 123 Main Street, Toronto, ON"
+            ],
+            "implementation": "Check listing['TransactionType'] and prepend to title",
+            "userBenefit": "Users can clearly see if same property is for sale vs lease"
+        },
+        "optionalFiltering": {
+            "rule": "Allow admins to filter by transaction type if they only want sale or lease listings",
+            "setting": "transaction_type_filter (For Sale, For Lease, For Sale or Lease, or empty for all)",
+            "apiImplementation": "Add TransactionType eq '[value]' to API $filter parameter"
+        },
+        "keyInsight": "Dual listings are VALID and should be imported as separate posts with differentiated titles"
+    },
+    "cronJobPerformancePatterns": {
+        "description": "Performance considerations for WordPress cron jobs in real estate plugins",
+        "learnedDate": "2025-10-30",
+        "performanceAnalysis": {
+            "rule": "Always analyze API call volume and execution time before setting cron frequency",
+            "badExample": {
+                "frequency": "Daily cleanup making 200 individual API calls",
+                "apiCalls": "200 calls/day = 6000 calls/month",
+                "executionTime": "3-5 minutes per execution",
+                "risk": "API rate limiting, server load, quota exhaustion"
+            },
+            "goodExample": {
+                "frequency": "Weekly cleanup making 1 API query",
+                "apiCalls": "1 call/week = 4 calls/month",
+                "executionTime": "5-10 seconds per execution",
+                "optimization": "1500x reduction in API calls"
+            }
+        },
+        "bestPractices": {
+            "apiQueryDesign": "Design queries to get needed data in single call, not loop of individual calls",
+            "batchProcessing": "Query for multiple items at once (e.g., 200 terminated listings) vs individual lookups",
+            "frequencyOptimization": "Weekly is sufficient for cleanup - terminated listings don't need immediate removal",
+            "loadDistribution": "Main sync + cleanup jobs = 2 cron jobs with different schedules",
+            "performanceMetrics": "Document API calls per execution and frequency for future optimization"
+        },
+        "evaluationQuestions": [
+            "How many API calls does this cron job make per execution?",
+            "What's the execution time?",
+            "How often does it need to run? (Daily vs weekly vs hourly)",
+            "Can we batch the operations instead of individual calls?",
+            "What's the total monthly API usage? (calls * frequency)",
+            "Are there API rate limits we might hit?",
+            "Is there a more efficient query structure?"
+        ]
     }
 }

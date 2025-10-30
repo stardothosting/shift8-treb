@@ -4,7 +4,7 @@ Tags: real estate, listings, proptx, trreb, mlstr
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.6.6
+Stable tag: 1.7.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -131,6 +131,19 @@ The plugin is designed for single-site installations. Multisite compatibility is
 4. Quick stats widget displaying sync status and listing counts
 
 == Changelog ==
+
+= 1.7.0 =
+* **Transaction Type Differentiation**: Post titles now prefixed with "For Sale:", "For Lease:", or "For Sale or Lease:" to distinguish dual listings
+* **Transaction Type Filtering**: Optional API filter to sync only sale listings, lease listings, or both (new setting: transaction_type_filter)
+* **Weekly Cleanup Job**: Automated removal of terminated/cancelled listings with intelligent API querying (runs weekly for optimal performance)
+* **Enhanced API Filtering**: Replaced ContractStatus filter with StandardStatus (Active, Pending, Closed) for better accuracy
+* **Performance Optimization**: Weekly cleanup uses 1 API query vs 200 individual calls (200x reduction in API usage)
+* **Improved Filtering Logic**: Added ContractStatus ne 'Unavailable' exclusion to prevent importing unavailable listings
+* **Comprehensive Test Coverage**: Added 13 new tests, all 129 tests passing with 428 assertions
+* **Code Coverage Improvement**: Sync Service coverage increased from 55.56% to 83.95%
+* Prevents importing terminated, cancelled, expired, or withdrawn listings at the API level
+* Automatically removes terminated listings from website within 7 days
+* Helps agents differentiate between same-address sale vs lease listings
 
 = 1.6.6 =
 * **Documentation Enhancement**: Added prominent blog post link with technical implementation details
