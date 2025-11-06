@@ -70,7 +70,7 @@ class TodaysChangesTest extends TestCase {
             'ListPrice' => 500000,
             'PublicRemarks' => 'Test description',
             'BedroomsTotal' => 3,
-            'BathroomsTotal' => 2
+            'BathroomsTotalInteger' => 2
         );
 
         $post_manager = new \Shift8_TREB_Post_Manager(array());
@@ -99,7 +99,7 @@ class TodaysChangesTest extends TestCase {
             'ListPrice' => 2500,
             'PublicRemarks' => 'Test description',
             'BedroomsTotal' => 2,
-            'BathroomsTotal' => 1
+            'BathroomsTotalInteger' => 1
         );
 
         $post_manager = new \Shift8_TREB_Post_Manager(array());
@@ -127,7 +127,7 @@ class TodaysChangesTest extends TestCase {
             'ListPrice' => 750000,
             'PublicRemarks' => 'Test description',
             'BedroomsTotal' => 4,
-            'BathroomsTotal' => 3
+            'BathroomsTotalInteger' => 3
         );
 
         $post_manager = new \Shift8_TREB_Post_Manager(array());
@@ -153,7 +153,7 @@ class TodaysChangesTest extends TestCase {
             'ListPrice' => 600000,
             'PublicRemarks' => 'Test description',
             'BedroomsTotal' => 3,
-            'BathroomsTotal' => 2
+            'BathroomsTotalInteger' => 2
         );
 
         $post_manager = new \Shift8_TREB_Post_Manager(array());

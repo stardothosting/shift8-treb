@@ -1885,5 +1885,189 @@
             "Are there API rate limits we might hit?",
             "Is there a more efficient query structure?"
         ]
+    },
+    "apiFieldMappingPatterns": {
+        "description": "Best practices for mapping external API fields to plugin functionality - Learned 2025-11-06",
+        "learnedDate": "2025-11-06",
+        "completeApiResponseAnalysis": {
+            "rule": "ALWAYS examine complete API response when troubleshooting missing or incorrect data",
+            "process": [
+                "Query the API for a specific record with known issues",
+                "Dump the ENTIRE API response (all fields, not just expected ones)",
+                "Search for patterns - look for similar field names, alternative formats, nested data",
+                "Compare field names in code vs actual API response",
+                "Document exact API field names for future reference"
+            ],
+            "tools": {
+                "wpcli": "wp eval to query API and dump full response",
+                "logging": "Use shift8_treb_log() to capture complete API responses",
+                "grep": "Search codebase for field name usage patterns"
+            },
+            "example": {
+                "problem": "Bathrooms and Square Footage always showing 'N/A'",
+                "investigation": "Dumped complete API response for C12468133",
+                "discovery": "API uses 'BathroomsTotalInteger' not 'BathroomsTotal', 'LivingAreaRange' not 'LivingArea'",
+                "lesson": "Don't assume field names - verify with actual API data"
+            }
+        },
+        "avoidArbitraryInterpretation": {
+            "rule": "NEVER arbitrarily interpret or manipulate data from APIs - display as provided",
+            "rationale": "API data is structured by domain experts - your interpretation may be incorrect",
+            "examples": {
+                "bad": "Converting BedroomsTotal=2 to '1+1' based on PropertyType assumptions",
+                "good": "Displaying BedroomsTotal=2 exactly as provided by API",
+                "acceptable": "Formatting for display (number_format, date formatting) without changing meaning"
+            },
+            "whenToFormat": [
+                "Number formatting (commas, decimals) for readability",
+                "Date/time formatting for localization",
+                "Adding units to measurements ('sq ft' to a range)",
+                "Currency symbols and formatting"
+            ],
+            "whenNotToFormat": [
+                "Deriving new meanings from combined fields",
+                "Assuming business logic based on property types",
+                "Converting structured data to different representations",
+                "Making assumptions about what data 'should' mean"
+            ],
+            "userFeedback": "If user rejects your interpretation, immediately revert to raw API data"
+        },
+        "fieldMappingBestPractices": {
+            "rule": "Create helper methods for complex field mappings with fallback logic",
+            "pattern": "Try most specific field → fallback to range/approximate → fallback to alternative → return N/A",
+            "implementation": {
+                "helperMethod": "Create private method like format_square_footage()",
+                "fallbackChain": "LivingArea (exact) → LivingAreaRange (range) → BuildingAreaTotal (alternative) → N/A",
+                "emptyCheck": "Use isset() AND !empty() to handle both missing and empty string values",
+                "formatting": "Apply appropriate formatting based on data type (commas for numbers, units for ranges)"
+            },
+            "example": {
+                "method": "format_square_footage()",
+                "logic": [
+                    "1. Check isset($listing['LivingArea']) && !empty() → format with commas",
+                    "2. Check isset($listing['LivingAreaRange']) && !empty() → append ' sq ft'",
+                    "3. Check isset($listing['BuildingAreaTotal']) && !empty() → format with commas",
+                    "4. Return 'N/A'"
+                ]
+            }
+        },
+        "metaFieldConsistency": {
+            "rule": "Update meta field mappings to match corrected API field names",
+            "importance": "Meta fields should store actual API data for future extensibility",
+            "process": [
+                "When changing template placeholder source field, also update meta field mapping",
+                "Add new meta fields for newly discovered API fields (e.g., BedroomsAboveGrade)",
+                "Keep old meta field names for backward compatibility, just update source",
+                "Document API field name changes in code comments"
+            ],
+            "example": {
+                "before": "'shift8_treb_bathrooms_total' => array('field' => 'BathroomsTotal', ...)",
+                "after": "'shift8_treb_bathrooms_total' => array('field' => 'BathroomsTotalInteger', ...)",
+                "additionalFields": [
+                    "'shift8_treb_bedrooms_above_grade' => array('field' => 'BedroomsAboveGrade', ...)",
+                    "'shift8_treb_bedrooms_below_grade' => array('field' => 'BedroomsBelowGrade', ...)",
+                    "'shift8_treb_living_area_range' => array('field' => 'LivingAreaRange', ...)"
+                ]
+            }
+        },
+        "testCoverageForFieldChanges": {
+            "rule": "ALWAYS add comprehensive tests when changing API field mappings",
+            "requiredTests": [
+                "Test helper method with exact value",
+                "Test helper method with fallback values",
+                "Test helper method with no data (N/A case)",
+                "Test helper method with empty strings",
+                "Test helper method priority order",
+                "Test meta field storage of new fields",
+                "Test template placeholders with missing data",
+                "Test complete field mapping integration",
+                "Test backward compatibility with old field names"
+            ],
+            "testStructure": {
+                "unitTests": "Test helper method directly with ReflectionClass",
+                "integrationTests": "Test template generation AND meta storage together",
+                "edgeCases": "Test with missing, empty, and malformed data",
+                "realWorldData": "Use actual API response data in test fixtures"
+            },
+            "example": {
+                "coverage": "Added 13 new tests for format_square_footage() and BathroomsTotalInteger change",
+                "result": "All 142 tests passing with 468 assertions",
+                "benefit": "Catches regressions when API changes or returns unexpected data"
+            }
+        },
+        "apiFieldDocumentation": {
+            "rule": "Document actual API field names discovered during troubleshooting",
+            "locations": [
+                "Add comments in code where fields are used",
+                "Update README with known API field mappings",
+                "Document in .cursorrules for future AI interactions",
+                "Add inline comments explaining non-obvious field names"
+            ],
+            "format": {
+                "codeComment": "// Using BathroomsTotalInteger (not BathroomsTotal) - confirmed from AMPRE API",
+                "mapping": "Template: %BATHROOMS% → API: BathroomsTotalInteger → Meta: shift8_treb_bathrooms_total"
+            }
+        }
+    },
+    "troubleshootingWorkflow": {
+        "description": "Systematic workflow for troubleshooting missing/incorrect data - Learned 2025-11-06",
+        "learnedDate": "2025-11-06",
+        "stepByStepProcess": {
+            "step1": {
+                "name": "Identify the symptom",
+                "action": "User reports specific data showing as 'N/A' or incorrect",
+                "example": "Bathrooms: N/A, Square Footage: N/A, Bedrooms showing wrong value"
+            },
+            "step2": {
+                "name": "Locate code that generates the output",
+                "action": "Find template placeholder replacement code",
+                "tools": ["grep '%BATHROOMS%' or grep '%SQFOOTAGE%'", "Find generate_post_content() method"]
+            },
+            "step3": {
+                "name": "Check API field names being used",
+                "action": "Look at what fields the code is checking (isset($listing['FieldName']))",
+                "example": "Code checks $listing['BathroomsTotal'] and $listing['LivingArea']"
+            },
+            "step4": {
+                "name": "Query actual API for specific listing",
+                "action": "Use wp eval to fetch and dump complete API response",
+                "command": "wp eval \"..fetch Property with specific ListingKey and dump all fields..\"",
+                "critical": "Dump ALL fields, not just the ones you think you need"
+            },
+            "step5": {
+                "name": "Compare code expectations vs API reality",
+                "action": "Look for field name mismatches, different formats, alternative fields",
+                "discoveries": [
+                    "BathroomsTotal (expected) vs BathroomsTotalInteger (actual)",
+                    "LivingArea (expected) vs LivingAreaRange (actual)",
+                    "BedroomsTotal exists, but also BedroomsAboveGrade and BedroomsBelowGrade"
+                ]
+            },
+            "step6": {
+                "name": "Update code to use correct API fields",
+                "action": "Change field names, add helper methods for fallback logic",
+                "testing": "Test with actual MLS numbers: wp shift8-treb sync --mls=NUMBER"
+            },
+            "step7": {
+                "name": "Add comprehensive test coverage",
+                "action": "Create unit tests for helper methods and integration tests for complete flow",
+                "verification": "composer test should show all tests passing"
+            },
+            "step8": {
+                "name": "Document findings",
+                "action": "Add comments in code, update .cursorrules, document for future",
+                "benefit": "Next time this issue occurs, solution is already documented"
+            }
+        },
+        "preventionChecklist": [
+            "✓ Use wp eval to inspect actual API responses during development",
+            "✓ Don't assume API field names - verify them",
+            "✓ Add tests that use real-world API data structures",
+            "✓ Create helper methods with fallback chains for robustness",
+            "✓ Handle both missing (isset) and empty (!empty) values",
+            "✓ Document discovered field mappings in code comments",
+            "✓ Test with multiple actual MLS numbers to verify data appears correctly",
+            "✓ Check meta field storage in addition to template output"
+        ]
     }
 }

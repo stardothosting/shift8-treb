@@ -4,7 +4,7 @@ Tags: real estate, listings, proptx, trreb, mlstr
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.7.0
+Stable tag: 1.7.1
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -131,6 +131,16 @@ The plugin is designed for single-site installations. Multisite compatibility is
 4. Quick stats widget displaying sync status and listing counts
 
 == Changelog ==
+
+= 1.7.1 =
+* **Critical Data Fix**: Corrected API field mappings for bathrooms and square footage - was showing N/A, now displays correctly
+* **API Field Updates**: Updated to use BathroomsTotalInteger (not BathroomsTotal) and LivingAreaRange (not LivingArea) per actual AMPRE API
+* **Enhanced Data Handling**: Created format_square_footage() helper with fallback chain (LivingArea → LivingAreaRange → BuildingAreaTotal → N/A)
+* **Additional Meta Fields**: Added storage for BedroomsAboveGrade, BedroomsBelowGrade, and LivingAreaRange for better data extensibility
+* **Comprehensive Test Coverage**: Added 13 new tests for API field mapping, all 142 tests passing with 468 assertions
+* **Improved Reliability**: Tests cover helper methods, meta field storage, edge cases, integration flows, and backward compatibility
+* **Documentation Update**: Added apiFieldMappingPatterns and troubleshootingWorkflow sections to .cursorrules for future maintainability
+* Fixes issue where bathroom count and square footage always displayed as "N/A" despite data being available in API
 
 = 1.7.0 =
 * **Transaction Type Differentiation**: Post titles now prefixed with "For Sale:", "For Lease:", or "For Sale or Lease:" to distinguish dual listings

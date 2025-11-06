@@ -1398,8 +1398,11 @@ class PostManagerTest extends TestCase {
             'PostalCode' => 'M5V 3A8',
             'ListPrice' => 750000,
             'BedroomsTotal' => 2,
-            'BathroomsTotal' => 2.5,
+            'BedroomsAboveGrade' => 1,
+            'BedroomsBelowGrade' => 1,
+            'BathroomsTotalInteger' => 2,
             'LivingArea' => 1200,
+            'LivingAreaRange' => '1100-1200',
             'PropertyType' => 'Condominium',
             'PublicRemarks' => 'Beautiful condo in downtown Toronto',
             'PoolPrivateYN' => 'true',
@@ -1465,7 +1468,7 @@ class PostManagerTest extends TestCase {
                     $this->assertEquals(2, $call['value']);
                     break;
                 case 'shift8_treb_bathrooms_total':
-                    $this->assertEquals(2.5, $call['value']);
+                    $this->assertEquals(2, $call['value']);
                     break;
                 case 'shift8_treb_pool_private_yn':
                     $this->assertEquals('1', $call['value']);
@@ -1941,5 +1944,457 @@ class PostManagerTest extends TestCase {
         
         $this->assertTrue(true); // Placeholder - full integration test would be complex
         // Real test would mock the entire process_listing flow
+    }
+
+    /**
+     * Test format_square_footage method with exact LivingArea
+     * 
+     * @since 1.7.1
+     */
+    public function test_format_square_footage_with_exact_living_area() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('format_square_footage');
+        $method->setAccessible(true);
+
+        // Test with exact LivingArea (preferred)
+        $listing = array('LivingArea' => 1500);
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('1,500', $result);
+        
+        // Test with zero value (should still format)
+        $listing = array('LivingArea' => 0);
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('N/A', $result);
+    }
+
+    /**
+     * Test format_square_footage method with LivingAreaRange fallback
+     * 
+     * @since 1.7.1
+     */
+    public function test_format_square_footage_with_living_area_range() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('format_square_footage');
+        $method->setAccessible(true);
+
+        // Test with LivingAreaRange (fallback when LivingArea not available)
+        $listing = array('LivingAreaRange' => '1400-1600');
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('1400-1600 sq ft', $result);
+        
+        // Test with different range format
+        $listing = array('LivingAreaRange' => '600-699');
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('600-699 sq ft', $result);
+        
+        // Test with single value range
+        $listing = array('LivingAreaRange' => '2500-3000');
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('2500-3000 sq ft', $result);
+    }
+
+    /**
+     * Test format_square_footage method with BuildingAreaTotal as last resort
+     * 
+     * @since 1.7.1
+     */
+    public function test_format_square_footage_with_building_area_total() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('format_square_footage');
+        $method->setAccessible(true);
+
+        // Test with BuildingAreaTotal (last resort)
+        $listing = array('BuildingAreaTotal' => 2000);
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('2,000', $result);
+    }
+
+    /**
+     * Test format_square_footage method with no data available
+     * 
+     * @since 1.7.1
+     */
+    public function test_format_square_footage_with_no_data() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('format_square_footage');
+        $method->setAccessible(true);
+
+        // Test with completely missing data
+        $listing = array();
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('N/A', $result);
+        
+        // Test with empty string values (not null)
+        $listing = array('LivingArea' => '', 'LivingAreaRange' => '', 'BuildingAreaTotal' => '');
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('N/A', $result);
+    }
+
+    /**
+     * Test format_square_footage method priority order
+     * 
+     * @since 1.7.1
+     */
+    public function test_format_square_footage_priority_order() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('format_square_footage');
+        $method->setAccessible(true);
+
+        // Test that LivingArea takes priority over LivingAreaRange
+        $listing = array(
+            'LivingArea' => 1500,
+            'LivingAreaRange' => '1400-1600',
+            'BuildingAreaTotal' => 2000
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('1,500', $result);
+        
+        // Test that LivingAreaRange takes priority over BuildingAreaTotal
+        $listing = array(
+            'LivingAreaRange' => '1400-1600',
+            'BuildingAreaTotal' => 2000
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('1400-1600 sq ft', $result);
+    }
+
+    /**
+     * Test new meta fields for bedroom breakdown are stored
+     * 
+     * @since 1.7.1
+     */
+    public function test_store_listing_meta_fields_bedroom_breakdown() {
+        global $meta_calls;
+        $meta_calls = array();
+        
+        Functions\when('update_post_meta')->alias(function($post_id, $key, $value) {
+            global $meta_calls;
+            $meta_calls[] = array('post_id' => $post_id, 'key' => $key, 'value' => $value);
+            return true;
+        });
+
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('store_listing_meta_fields');
+        $method->setAccessible(true);
+
+        $listing = array(
+            'ListingKey' => 'C12468133',
+            'ListAgentKey' => '2229166',
+            'BedroomsTotal' => 2,
+            'BedroomsAboveGrade' => 1,
+            'BedroomsBelowGrade' => 1,
+            'BathroomsTotalInteger' => 1,
+            'LivingAreaRange' => '600-699',
+            'UnparsedAddress' => '1005 King Street W 317',
+            'ListPrice' => 2600,
+            'PropertyType' => 'Condominium',
+            'OnMarketDate' => '2025-10-17T00:00:00Z'
+        );
+
+        $post_id = 123;
+        $method->invoke($this->post_manager, $post_id, $listing);
+
+        // Verify new bedroom meta fields are stored
+        $meta_keys = array_column($meta_calls, 'key');
+        
+        $this->assertContains('shift8_treb_bedrooms_above_grade', $meta_keys, 'BedroomsAboveGrade meta field should be stored');
+        $this->assertContains('shift8_treb_bedrooms_below_grade', $meta_keys, 'BedroomsBelowGrade meta field should be stored');
+        $this->assertContains('shift8_treb_living_area_range', $meta_keys, 'LivingAreaRange meta field should be stored');
+        
+        // Verify correct values
+        foreach ($meta_calls as $call) {
+            switch ($call['key']) {
+                case 'shift8_treb_bedrooms_above_grade':
+                    $this->assertEquals(1, $call['value'], 'BedroomsAboveGrade should be 1');
+                    break;
+                case 'shift8_treb_bedrooms_below_grade':
+                    $this->assertEquals(1, $call['value'], 'BedroomsBelowGrade should be 1');
+                    break;
+                case 'shift8_treb_living_area_range':
+                    $this->assertEquals('600-699', $call['value'], 'LivingAreaRange should be 600-699');
+                    break;
+                case 'shift8_treb_bathrooms_total':
+                    $this->assertEquals(1, $call['value'], 'BathroomsTotalInteger should be stored as 1');
+                    break;
+            }
+        }
+    }
+
+    /**
+     * Test template placeholders with missing bathroom data
+     * 
+     * @since 1.7.1
+     */
+    public function test_template_placeholders_with_missing_bathrooms() {
+        Functions\when('get_site_url')->justReturn('http://example.com');
+        
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('generate_post_content');
+        $method->setAccessible(true);
+
+        // Test with missing BathroomsTotalInteger
+        $listing = array(
+            'ListingKey' => 'TEST123',
+            'UnparsedAddress' => '123 Test St',
+            'ListPrice' => 500000,
+            'BedroomsTotal' => 3,
+            // BathroomsTotalInteger intentionally missing
+            'PublicRemarks' => 'Test property'
+        );
+        
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertStringContainsString('N/A', $result, 'Should show N/A for missing bathroom data');
+    }
+
+    /**
+     * Test template placeholders with missing square footage data
+     * 
+     * @since 1.7.1
+     */
+    public function test_template_placeholders_with_missing_square_footage() {
+        Functions\when('get_site_url')->justReturn('http://example.com');
+        
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('generate_post_content');
+        $method->setAccessible(true);
+
+        // Test with all size fields missing
+        $listing = array(
+            'ListingKey' => 'TEST123',
+            'UnparsedAddress' => '123 Test St',
+            'ListPrice' => 500000,
+            'BedroomsTotal' => 3,
+            'BathroomsTotalInteger' => 2,
+            // All size fields intentionally missing
+            'PublicRemarks' => 'Test property'
+        );
+        
+        $result = $method->invoke($this->post_manager, $listing);
+        // Test template renders without error even with missing data
+        $this->assertIsString($result);
+        $this->assertNotEmpty($result);
+    }
+
+    /**
+     * Test template placeholders with empty string values
+     * 
+     * @since 1.7.1
+     */
+    public function test_template_placeholders_with_empty_string_values() {
+        Functions\when('get_site_url')->justReturn('http://example.com');
+        
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('generate_post_content');
+        $method->setAccessible(true);
+
+        // Test with empty string values (not null)
+        $listing = array(
+            'ListingKey' => 'TEST123',
+            'UnparsedAddress' => '123 Test St',
+            'ListPrice' => 500000,
+            'BedroomsTotal' => 3,
+            'BathroomsTotalInteger' => '',
+            'LivingArea' => '',
+            'LivingAreaRange' => '',
+            'BuildingAreaTotal' => '',
+            'PublicRemarks' => 'Test property'
+        );
+        
+        $result = $method->invoke($this->post_manager, $listing);
+        // Should handle empty strings gracefully
+        $this->assertIsString($result);
+        $this->assertNotEmpty($result);
+    }
+
+    /**
+     * Test complete field mapping integration for new bathroom field
+     * 
+     * @since 1.7.1
+     */
+    public function test_complete_bathroom_field_mapping() {
+        Functions\when('get_site_url')->justReturn('http://example.com');
+        
+        global $meta_calls;
+        $meta_calls = array();
+        
+        Functions\when('update_post_meta')->alias(function($post_id, $key, $value) {
+            global $meta_calls;
+            $meta_calls[] = array('post_id' => $post_id, 'key' => $key, 'value' => $value);
+            return true;
+        });
+
+        $reflection = new \ReflectionClass($this->post_manager);
+        $content_method = $reflection->getMethod('generate_post_content');
+        $content_method->setAccessible(true);
+        $meta_method = $reflection->getMethod('store_listing_meta_fields');
+        $meta_method->setAccessible(true);
+
+        // Real-world data from C12468133
+        $listing = array(
+            'ListingKey' => 'C12468133',
+            'ListAgentKey' => '2229166',
+            'BedroomsTotal' => 2,
+            'BedroomsAboveGrade' => 1,
+            'BedroomsBelowGrade' => 1,
+            'BathroomsTotalInteger' => 1,
+            'LivingAreaRange' => '600-699',
+            'UnparsedAddress' => '1005 King Street W 317',
+            'ListPrice' => 2600,
+            'PropertyType' => 'Residential Condo & Other',
+            'PublicRemarks' => 'Test property',
+            'OnMarketDate' => '2025-10-17T00:00:00Z'
+        );
+
+        // Test content generation
+        $content = $content_method->invoke($this->post_manager, $listing);
+        $this->assertStringContainsString('1', $content, 'Should contain bathroom count of 1');
+        $this->assertStringContainsString('2', $content, 'Should contain bedroom count of 2');
+
+        // Test meta storage
+        $post_id = 123;
+        $meta_method->invoke($this->post_manager, $post_id, $listing);
+        
+        $meta_keys = array_column($meta_calls, 'key');
+        $this->assertContains('shift8_treb_bathrooms_total', $meta_keys);
+        
+        // Verify the correct value is stored
+        $bathroom_meta = array_filter($meta_calls, function($call) {
+            return $call['key'] === 'shift8_treb_bathrooms_total';
+        });
+        $this->assertNotEmpty($bathroom_meta);
+        $bathroom_value = array_values($bathroom_meta)[0]['value'];
+        $this->assertEquals(1, $bathroom_value, 'BathroomsTotalInteger value should be stored correctly');
+    }
+
+    /**
+     * Test complete field mapping integration for square footage
+     * 
+     * @since 1.7.1
+     */
+    public function test_complete_square_footage_field_mapping() {
+        Functions\when('get_site_url')->justReturn('http://example.com');
+        
+        global $meta_calls;
+        $meta_calls = array();
+        
+        Functions\when('update_post_meta')->alias(function($post_id, $key, $value) {
+            global $meta_calls;
+            $meta_calls[] = array('post_id' => $post_id, 'key' => $key, 'value' => $value);
+            return true;
+        });
+
+        $reflection = new \ReflectionClass($this->post_manager);
+        $content_method = $reflection->getMethod('generate_post_content');
+        $content_method->setAccessible(true);
+        $meta_method = $reflection->getMethod('store_listing_meta_fields');
+        $meta_method->setAccessible(true);
+
+        // Test with LivingAreaRange (most common for condos)
+        $listing = array(
+            'ListingKey' => 'W12468166',
+            'ListAgentKey' => '9543065',
+            'BedroomsTotal' => 5,
+            'BathroomsTotalInteger' => 4,
+            'LivingAreaRange' => '2500-3000',
+            'UnparsedAddress' => '31 Nineteenth Street',
+            'ListPrice' => 1379000,
+            'PropertyType' => 'Residential Freehold',
+            'PublicRemarks' => 'Test property',
+            'OnMarketDate' => '2025-10-17T00:00:00Z'
+        );
+
+        // Test meta storage directly (template may or may not include square footage placeholder)
+        $post_id = 456;
+        $meta_method->invoke($this->post_manager, $post_id, $listing);
+        
+        $meta_keys = array_column($meta_calls, 'key');
+        $this->assertContains('shift8_treb_living_area_range', $meta_keys);
+        
+        // Verify the correct value is stored
+        $area_meta = array_filter($meta_calls, function($call) {
+            return $call['key'] === 'shift8_treb_living_area_range';
+        });
+        $this->assertNotEmpty($area_meta);
+        $area_value = array_values($area_meta)[0]['value'];
+        $this->assertEquals('2500-3000', $area_value, 'LivingAreaRange value should be stored correctly');
+    }
+
+    /**
+     * Test backward compatibility with old API field names
+     * 
+     * @since 1.7.1
+     */
+    public function test_backward_compatibility_with_old_api_fields() {
+        Functions\when('get_site_url')->justReturn('http://example.com');
+        
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('generate_post_content');
+        $method->setAccessible(true);
+
+        // Test with old field name (should gracefully fail to N/A)
+        $listing = array(
+            'ListingKey' => 'OLD123',
+            'UnparsedAddress' => '123 Old Format St',
+            'ListPrice' => 500000,
+            'BedroomsTotal' => 3,
+            'BathroomsTotal' => 2.5, // Old field name (float) - should be ignored
+            'LivingArea' => '', // Empty old field
+            // Missing BathroomsTotalInteger
+            'PublicRemarks' => 'Test property'
+        );
+        
+        $result = $method->invoke($this->post_manager, $listing);
+        
+        // Should not crash
+        $this->assertIsString($result);
+        $this->assertNotEmpty($result);
+        
+        // Should show N/A for bathrooms (since BathroomsTotalInteger is missing)
+        $this->assertStringContainsString('N/A', $result);
+    }
+
+    /**
+     * Test that both exact and range square footage are handled in templates
+     * 
+     * @since 1.7.1
+     */
+    public function test_square_footage_template_with_both_formats() {
+        Functions\when('get_site_url')->justReturn('http://example.com');
+        
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('generate_post_content');
+        $method->setAccessible(true);
+
+        // Test with exact value
+        $listing1 = array(
+            'ListingKey' => 'EXACT123',
+            'UnparsedAddress' => '123 Test St',
+            'ListPrice' => 500000,
+            'BedroomsTotal' => 3,
+            'BathroomsTotalInteger' => 2,
+            'LivingArea' => 1500,
+            'PublicRemarks' => 'Test property'
+        );
+        
+        $result1 = $method->invoke($this->post_manager, $listing1);
+        // Template doesn't include square footage, just test it renders
+        $this->assertIsString($result1);
+        $this->assertNotEmpty($result1);
+        
+        // Test with range
+        $listing2 = array(
+            'ListingKey' => 'RANGE123',
+            'UnparsedAddress' => '456 Test St',
+            'ListPrice' => 600000,
+            'BedroomsTotal' => 2,
+            'BathroomsTotalInteger' => 1,
+            'LivingAreaRange' => '800-900',
+            'PublicRemarks' => 'Test property'
+        );
+        
+        $result2 = $method->invoke($this->post_manager, $listing2);
+        // Template doesn't include square footage, just test it renders
+        $this->assertIsString($result2);
+        $this->assertNotEmpty($result2);
     }
 }

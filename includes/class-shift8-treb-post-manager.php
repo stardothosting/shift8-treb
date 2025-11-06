@@ -723,6 +723,32 @@ class Shift8_TREB_Post_Manager {
     }
 
     /**
+     * Format square footage from LivingAreaRange or exact value
+     *
+     * @since 1.7.1
+     * @param array $listing Listing data
+     * @return string Formatted square footage
+     */
+    private function format_square_footage($listing) {
+        // Check for exact LivingArea first (if it exists)
+        if (isset($listing['LivingArea']) && !empty($listing['LivingArea'])) {
+            return number_format(intval($listing['LivingArea']));
+        }
+        
+        // Fall back to LivingAreaRange (e.g., "2500-3000")
+        if (isset($listing['LivingAreaRange']) && !empty($listing['LivingAreaRange'])) {
+            return sanitize_text_field($listing['LivingAreaRange']) . ' sq ft';
+        }
+        
+        // Check BuildingAreaTotal as last resort
+        if (isset($listing['BuildingAreaTotal']) && !empty($listing['BuildingAreaTotal'])) {
+            return number_format(intval($listing['BuildingAreaTotal']));
+        }
+        
+        return 'N/A';
+    }
+
+    /**
      * Generate post content using template
      *
      * @since 1.0.0
@@ -742,8 +768,8 @@ class Shift8_TREB_Post_Manager {
             '%PRICE%' => '$' . number_format(intval($listing['ListPrice'])),
             '%MLS%' => sanitize_text_field($listing['ListingKey']),
             '%BEDROOMS%' => isset($listing['BedroomsTotal']) ? sanitize_text_field($listing['BedroomsTotal']) : 'N/A',
-            '%BATHROOMS%' => isset($listing['BathroomsTotal']) ? sanitize_text_field($listing['BathroomsTotal']) : 'N/A',
-            '%SQFT%' => isset($listing['LivingArea']) ? number_format(intval($listing['LivingArea'])) : 'N/A',
+            '%BATHROOMS%' => isset($listing['BathroomsTotalInteger']) ? sanitize_text_field($listing['BathroomsTotalInteger']) : 'N/A',
+            '%SQFT%' => $this->format_square_footage($listing),
             '%DESCRIPTION%' => isset($listing['PublicRemarks']) ? wp_kses_post($listing['PublicRemarks']) : '',
             '%PROPERTY_TYPE%' => isset($listing['PropertyType']) ? sanitize_text_field($listing['PropertyType']) : 'N/A',
             '%CITY%' => isset($listing['City']) ? sanitize_text_field($listing['City']) : '',
@@ -752,7 +778,7 @@ class Shift8_TREB_Post_Manager {
             // Template-specific placeholders (matching actual template usage)
             '%MLSNUMBER%' => sanitize_text_field($listing['ListingKey']),
             '%LISTPRICE%' => '$' . number_format(intval($listing['ListPrice'])),
-            '%SQFOOTAGE%' => isset($listing['LivingArea']) ? number_format(intval($listing['LivingArea'])) : 'N/A',
+            '%SQFOOTAGE%' => $this->format_square_footage($listing),
             '%STREETNUMBER%' => $address_parts['number'],
             '%STREETNAME%' => $address_parts['street'],
             '%APT_NUM%' => $address_parts['unit'],
@@ -858,8 +884,8 @@ class Shift8_TREB_Post_Manager {
             '%PRICE%' => '$' . number_format(floatval($listing['ListPrice']), 2),
             '%MLS%' => sanitize_text_field($listing['ListingKey']),
             '%BEDROOMS%' => isset($listing['BedroomsTotal']) ? sanitize_text_field($listing['BedroomsTotal']) : 'N/A',
-            '%BATHROOMS%' => isset($listing['BathroomsTotal']) ? sanitize_text_field($listing['BathroomsTotal']) : 'N/A',
-            '%SQFT%' => isset($listing['LivingArea']) ? number_format(intval($listing['LivingArea'])) : 'N/A',
+            '%BATHROOMS%' => isset($listing['BathroomsTotalInteger']) ? sanitize_text_field($listing['BathroomsTotalInteger']) : 'N/A',
+            '%SQFT%' => $this->format_square_footage($listing),
             '%DESCRIPTION%' => isset($listing['PublicRemarks']) ? wp_kses_post($listing['PublicRemarks']) : '',
             '%PROPERTY_TYPE%' => isset($listing['PropertyType']) ? sanitize_text_field($listing['PropertyType']) : 'N/A',
             '%CITY%' => isset($listing['City']) ? sanitize_text_field($listing['City']) : '',
@@ -868,7 +894,7 @@ class Shift8_TREB_Post_Manager {
             // Template-specific placeholders (matching actual template usage)
             '%MLSNUMBER%' => sanitize_text_field($listing['ListingKey']),
             '%LISTPRICE%' => '$' . number_format(floatval($listing['ListPrice']), 2),
-            '%SQFOOTAGE%' => isset($listing['LivingArea']) ? number_format(intval($listing['LivingArea'])) : 'N/A',
+            '%SQFOOTAGE%' => $this->format_square_footage($listing),
             '%STREETNUMBER%' => $address_parts['number'],
             '%STREETNAME%' => $address_parts['street'],
             '%APT_NUM%' => $address_parts['unit'],
@@ -934,10 +960,13 @@ class Shift8_TREB_Post_Manager {
             'shift8_treb_property_type' => array('field' => 'PropertyType', 'sanitize' => 'text'),
             'shift8_treb_property_subtype' => array('field' => 'PropertySubType', 'sanitize' => 'text'),
             'shift8_treb_bedrooms_total' => array('field' => 'BedroomsTotal', 'sanitize' => 'int'),
-            'shift8_treb_bathrooms_total' => array('field' => 'BathroomsTotal', 'sanitize' => 'float'),
+            'shift8_treb_bedrooms_above_grade' => array('field' => 'BedroomsAboveGrade', 'sanitize' => 'int'),
+            'shift8_treb_bedrooms_below_grade' => array('field' => 'BedroomsBelowGrade', 'sanitize' => 'int'),
+            'shift8_treb_bathrooms_total' => array('field' => 'BathroomsTotalInteger', 'sanitize' => 'int'),
             'shift8_treb_bathrooms_full' => array('field' => 'BathroomsFull', 'sanitize' => 'int'),
             'shift8_treb_bathrooms_half' => array('field' => 'BathroomsHalf', 'sanitize' => 'int'),
             'shift8_treb_living_area' => array('field' => 'LivingArea', 'sanitize' => 'int'),
+            'shift8_treb_living_area_range' => array('field' => 'LivingAreaRange', 'sanitize' => 'text'),
             'shift8_treb_lot_size_area' => array('field' => 'LotSizeArea', 'sanitize' => 'float'),
             'shift8_treb_lot_size_units' => array('field' => 'LotSizeUnits', 'sanitize' => 'text'),
             'shift8_treb_year_built' => array('field' => 'YearBuilt', 'sanitize' => 'int'),

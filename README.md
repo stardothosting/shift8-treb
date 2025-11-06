@@ -291,7 +291,55 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.6.6 (Current)
+### Version 1.7.1 (Current)
+- **🔧 Critical Data Fix**: Corrected API field mappings for bathrooms and square footage
+  - Issue: Data always displayed as "N/A" despite being available in API
+  - Root Cause: Plugin looked for `BathroomsTotal` and `LivingArea` but API uses `BathroomsTotalInteger` and `LivingAreaRange`
+  - Fixed template placeholder replacement to use correct API fields
+- **🛠️ Enhanced Data Handling**: Created `format_square_footage()` helper method
+  - Intelligent fallback chain: `LivingArea` (exact) → `LivingAreaRange` (range) → `BuildingAreaTotal` (alternative) → N/A
+  - Handles both exact values (1,500 sq ft) and ranges (600-699 sq ft) gracefully
+  - Properly handles missing and empty field values
+- **📊 Additional Meta Fields**: Enhanced data storage for better extensibility
+  - Added `shift8_treb_bedrooms_above_grade` for main floor bedrooms
+  - Added `shift8_treb_bedrooms_below_grade` for basement bedrooms
+  - Added `shift8_treb_living_area_range` for property size ranges
+  - Updated `shift8_treb_bathrooms_total` to use correct API field
+- **🧪 Comprehensive Test Coverage**: 142 tests passing with 468 assertions (+13 new tests)
+  - Helper method tests with exact values, fallbacks, empty data, priority order
+  - Meta field storage verification for all new fields
+  - Edge case handling (missing data, empty strings, backward compatibility)
+  - Integration tests for complete field mapping workflows
+  - Real-world data from actual MLS listings used in test fixtures
+- **📚 Documentation Enhancement**: Added comprehensive troubleshooting workflow to `.cursorrules`
+  - `apiFieldMappingPatterns`: Best practices for mapping external API fields
+  - `troubleshootingWorkflow`: 8-step systematic process for debugging missing data
+  - Prevention checklist for avoiding API field issues in future development
+
+### Version 1.7.0
+- **🏷️ Transaction Type Differentiation**: Post titles now prefixed with transaction type
+  - "For Sale:", "For Lease:", or "For Sale or Lease:" prefixes added automatically
+  - Helps differentiate same-address properties with different transaction types
+  - Especially useful for dual listings (same property for sale and lease)
+- **🔍 Transaction Type Filtering**: Optional API filter for targeted sync
+  - New setting: `transaction_type_filter` (For Sale, For Lease, For Sale or Lease, or All)
+  - Reduces API calls and processing time when only specific listing types needed
+  - Configurable via admin interface
+- **🗑️ Weekly Cleanup Job**: Automated terminated listing removal
+  - Intelligent API querying for terminated/cancelled/expired listings
+  - Runs weekly (not daily) for optimal performance (200x reduction in API calls)
+  - Single API query fetches up to 200 terminated listings vs 200 individual calls
+  - Automatically removes from website within 7 days
+- **⚡ Enhanced API Filtering**: Improved accuracy and performance
+  - Replaced `ContractStatus` filter with `StandardStatus` (Active, Pending, Closed)
+  - Added `ContractStatus ne 'Unavailable'` exclusion to prevent importing unavailable listings
+  - Prevents importing terminated, cancelled, expired, or withdrawn listings at API level
+- **🧪 Comprehensive Test Coverage**: 129 tests passing with 428 assertions (+13 new tests)
+  - Code coverage improvement: Sync Service from 55.56% to 83.95%
+  - All new functionality covered by unit and integration tests
+  - Zero-tolerance testing policy maintained
+
+### Version 1.6.6
 - **📖 Documentation Enhancement**: Added blog post link
   - Prominent link to technical blog post about RETS to RESO migration
   - Provides detailed implementation insights and PropTx integration details
