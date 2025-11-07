@@ -729,6 +729,51 @@ class Shift8_TREB_Post_Manager {
      * @param array $listing Listing data
      * @return string Formatted square footage
      */
+    /**
+     * Format bedroom count following TREB/realtor.ca display convention
+     * 
+     * TREB displays bedrooms as "X+Y" when both above-grade and below-grade bedrooms exist.
+     * This replicates the official TREB display format seen on realtor.ca and MLS sheets.
+     * 
+     * Examples:
+     * - BedroomsAboveGrade=1, BedroomsBelowGrade=1 → "1+1"
+     * - BedroomsAboveGrade=2, BedroomsBelowGrade=1 → "2+1"
+     * - BedroomsTotal=3, no breakdown → "3"
+     * 
+     * @param array $listing The listing data
+     * @return string Formatted bedroom count (e.g., "1+1" or "3")
+     */
+    private function format_bedrooms($listing) {
+        // Check if we have the breakdown fields (TREB's preferred display format)
+        // Note: isset() && $var !== '' handles NULL and empty string, but allows 0
+        $above_grade = (isset($listing['BedroomsAboveGrade']) && $listing['BedroomsAboveGrade'] !== '') 
+                       ? intval($listing['BedroomsAboveGrade']) 
+                       : null;
+        $below_grade = (isset($listing['BedroomsBelowGrade']) && $listing['BedroomsBelowGrade'] !== '') 
+                       ? intval($listing['BedroomsBelowGrade']) 
+                       : null;
+        
+        // If both above and below grade exist, use TREB's "X+Y" format
+        // This matches how TREB displays on realtor.ca and official MLS sheets
+        // Example: BedroomsAboveGrade=1, BedroomsBelowGrade=1 → "1+1"
+        if ($above_grade !== null && $below_grade !== null) {
+            return $above_grade . '+' . $below_grade;
+        }
+        
+        // If only above grade exists (common for single-level condos/houses)
+        // Example: BedroomsAboveGrade=3, BedroomsBelowGrade=NULL → "3"
+        if ($above_grade !== null) {
+            return (string) $above_grade;
+        }
+        
+        // Fall back to BedroomsTotal if breakdown not available (e.g., commercial properties)
+        if (isset($listing['BedroomsTotal']) && $listing['BedroomsTotal'] !== '') {
+            return (string) intval($listing['BedroomsTotal']);
+        }
+        
+        return 'N/A';
+    }
+
     private function format_square_footage($listing) {
         // Check for exact LivingArea first (if it exists)
         if (isset($listing['LivingArea']) && !empty($listing['LivingArea'])) {
@@ -767,7 +812,7 @@ class Shift8_TREB_Post_Manager {
             '%ADDRESS%' => sanitize_text_field($listing['UnparsedAddress']),
             '%PRICE%' => '$' . number_format(intval($listing['ListPrice'])),
             '%MLS%' => sanitize_text_field($listing['ListingKey']),
-            '%BEDROOMS%' => isset($listing['BedroomsTotal']) ? sanitize_text_field($listing['BedroomsTotal']) : 'N/A',
+            '%BEDROOMS%' => $this->format_bedrooms($listing),
             '%BATHROOMS%' => isset($listing['BathroomsTotalInteger']) ? sanitize_text_field($listing['BathroomsTotalInteger']) : 'N/A',
             '%SQFT%' => $this->format_square_footage($listing),
             '%DESCRIPTION%' => isset($listing['PublicRemarks']) ? wp_kses_post($listing['PublicRemarks']) : '',
@@ -883,7 +928,7 @@ class Shift8_TREB_Post_Manager {
             '%ADDRESS%' => sanitize_text_field($listing['UnparsedAddress']),
             '%PRICE%' => '$' . number_format(floatval($listing['ListPrice']), 2),
             '%MLS%' => sanitize_text_field($listing['ListingKey']),
-            '%BEDROOMS%' => isset($listing['BedroomsTotal']) ? sanitize_text_field($listing['BedroomsTotal']) : 'N/A',
+            '%BEDROOMS%' => $this->format_bedrooms($listing),
             '%BATHROOMS%' => isset($listing['BathroomsTotalInteger']) ? sanitize_text_field($listing['BathroomsTotalInteger']) : 'N/A',
             '%SQFT%' => $this->format_square_footage($listing),
             '%DESCRIPTION%' => isset($listing['PublicRemarks']) ? wp_kses_post($listing['PublicRemarks']) : '',

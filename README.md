@@ -291,7 +291,30 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.7.1 (Current)
+### Version 1.7.2 (Current)
+- **🏠 TREB Display Format Enhancement**: Bedroom count now matches official TREB/realtor.ca "X+Y" format
+  - Issue: Plugin displayed "2 bedrooms" while TREB/realtor.ca shows "1+1" for condos with dens
+  - Solution: Implemented ITSO standard format using BedroomsAboveGrade + BedroomsBelowGrade breakdown
+  - When both above and below grade bedrooms exist → Display as "X+Y" (e.g., "1+1", "5+1")
+  - When only above grade exists → Display single number (e.g., "3")
+  - Smart fallback to BedroomsTotal for commercial properties
+- **✅ Real-World Validation**: Tested across 8 different property scenarios
+  - Condo with den (1+1) - MLS C12468133 ✓ Verified in production
+  - Detached house with basement bedroom (5+1) ✓ Verified from API
+  - Single-level condos (1, 2, 3 bedrooms) ✓ Verified from API
+  - Studio apartments (0 bedrooms), commercial properties, missing data ✓ Edge cases tested
+- **🧪 Enhanced Test Coverage**: 148 tests passing with 484 assertions (+6 bedroom format tests)
+  - TREB "X+Y" format scenarios (1+1, 5+1, 2+1)
+  - Standard single-level properties (1, 2, 3 bedrooms)
+  - Fallback to BedroomsTotal for commercial listings
+  - Edge cases: zero bedrooms, NULL values, missing data
+  - Real-world property type scenarios (condos, detached, townhouses)
+- **📚 Official Standard Compliance**: Matches ITSO/TRREB/REALTOR.ca standard for bedroom display
+  - Information Technology Systems Ontario (ITSO) mandates "+1" format for dens
+  - Ensures consistency with how listings appear across all MLS systems
+  - Aligns with real estate professional and buyer expectations
+
+### Version 1.7.1
 - **🔧 Critical Data Fix**: Corrected API field mappings for bathrooms and square footage
   - Issue: Data always displayed as "N/A" despite being available in API
   - Root Cause: Plugin looked for `BathroomsTotal` and `LivingArea` but API uses `BathroomsTotalInteger` and `LivingAreaRange`

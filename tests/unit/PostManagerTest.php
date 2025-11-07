@@ -2059,6 +2059,212 @@ class PostManagerTest extends TestCase {
     }
 
     /**
+     * Test format_bedrooms method with TREB "X+Y" format
+     * 
+     * @since 1.7.1
+     */
+    public function test_format_bedrooms_with_above_and_below_grade() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('format_bedrooms');
+        $method->setAccessible(true);
+
+        // Test TREB's "1+1" format (MLS C12468133)
+        $listing = array(
+            'BedroomsTotal' => 2,
+            'BedroomsAboveGrade' => 1,
+            'BedroomsBelowGrade' => 1
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('1+1', $result);
+        
+        // Test "5+1" format (detached house with basement bedroom)
+        $listing = array(
+            'BedroomsTotal' => 6,
+            'BedroomsAboveGrade' => 5,
+            'BedroomsBelowGrade' => 1
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('5+1', $result);
+        
+        // Test "2+1" format
+        $listing = array(
+            'BedroomsTotal' => 3,
+            'BedroomsAboveGrade' => 2,
+            'BedroomsBelowGrade' => 1
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('2+1', $result);
+    }
+
+    /**
+     * Test format_bedrooms method with only above grade (standard case)
+     * 
+     * @since 1.7.1
+     */
+    public function test_format_bedrooms_with_only_above_grade() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('format_bedrooms');
+        $method->setAccessible(true);
+
+        // Test single bedroom condo (most common case)
+        $listing = array(
+            'BedroomsTotal' => 1,
+            'BedroomsAboveGrade' => 1,
+            'BedroomsBelowGrade' => null
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('1', $result);
+        
+        // Test 3 bedroom townhouse (no basement bedrooms)
+        $listing = array(
+            'BedroomsTotal' => 3,
+            'BedroomsAboveGrade' => 3
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('3', $result);
+        
+        // Test 2 bedroom condo
+        $listing = array(
+            'BedroomsTotal' => 2,
+            'BedroomsAboveGrade' => 2
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('2', $result);
+    }
+
+    /**
+     * Test format_bedrooms method fallback to BedroomsTotal
+     * 
+     * @since 1.7.1
+     */
+    public function test_format_bedrooms_fallback_to_total() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('format_bedrooms');
+        $method->setAccessible(true);
+
+        // Test commercial property with only BedroomsTotal
+        $listing = array(
+            'BedroomsTotal' => 2,
+            'BedroomsAboveGrade' => null,
+            'BedroomsBelowGrade' => null
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('2', $result);
+        
+        // Test with only BedroomsTotal present (missing breakdown fields entirely)
+        $listing = array(
+            'BedroomsTotal' => 4
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('4', $result);
+    }
+
+    /**
+     * Test format_bedrooms method with no data
+     * 
+     * @since 1.7.1
+     */
+    public function test_format_bedrooms_with_no_data() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('format_bedrooms');
+        $method->setAccessible(true);
+
+        // Test commercial property with no bedrooms
+        $listing = array();
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('N/A', $result);
+        
+        // Test with all fields as NULL
+        $listing = array(
+            'BedroomsTotal' => null,
+            'BedroomsAboveGrade' => null,
+            'BedroomsBelowGrade' => null
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('N/A', $result);
+        
+        // Test with empty string values
+        $listing = array(
+            'BedroomsTotal' => '',
+            'BedroomsAboveGrade' => '',
+            'BedroomsBelowGrade' => ''
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('N/A', $result);
+    }
+
+    /**
+     * Test format_bedrooms method with edge case: 0 bedrooms
+     * 
+     * @since 1.7.1
+     */
+    public function test_format_bedrooms_with_zero_bedrooms() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('format_bedrooms');
+        $method->setAccessible(true);
+
+        // Studio apartment (0 bedrooms) - should show "0" not "N/A"
+        $listing = array(
+            'BedroomsTotal' => 0,
+            'BedroomsAboveGrade' => 0,
+            'BedroomsBelowGrade' => null
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('0', $result);
+    }
+
+    /**
+     * Test format_bedrooms method priority and real-world scenarios
+     * 
+     * @since 1.7.1
+     */
+    public function test_format_bedrooms_real_world_scenarios() {
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('format_bedrooms');
+        $method->setAccessible(true);
+
+        // Scenario 1: Condo with den (1+1) - actual MLS C12468133
+        $listing = array(
+            'BedroomsTotal' => 2,
+            'BedroomsAboveGrade' => 1,
+            'BedroomsBelowGrade' => 1,
+            'PropertySubType' => 'Condo Apartment'
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('1+1', $result, 'Should display 1+1 for condo with den');
+        
+        // Scenario 2: Single-level condo with 2 bedrooms
+        $listing = array(
+            'BedroomsTotal' => 2,
+            'BedroomsAboveGrade' => 2,
+            'BedroomsBelowGrade' => null,
+            'PropertySubType' => 'Condo Apartment'
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('2', $result, 'Should display 2 for single-level condo');
+        
+        // Scenario 3: Detached house with basement bedroom (5+1)
+        $listing = array(
+            'BedroomsTotal' => 6,
+            'BedroomsAboveGrade' => 5,
+            'BedroomsBelowGrade' => 1,
+            'PropertySubType' => 'Detached'
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('5+1', $result, 'Should display 5+1 for house with basement bedroom');
+        
+        // Scenario 4: Townhouse all bedrooms on upper floors (3 bedrooms)
+        $listing = array(
+            'BedroomsTotal' => 3,
+            'BedroomsAboveGrade' => 3,
+            'BedroomsBelowGrade' => null,
+            'PropertySubType' => 'Att/Row/Townhouse'
+        );
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals('3', $result, 'Should display 3 for townhouse');
+    }
+
+    /**
      * Test new meta fields for bedroom breakdown are stored
      * 
      * @since 1.7.1
