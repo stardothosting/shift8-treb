@@ -4,7 +4,7 @@ Tags: real estate, listings, proptx, trreb, mlstr
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.7.2
+Stable tag: 1.7.3
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -131,6 +131,16 @@ The plugin is designed for single-site installations. Multisite compatibility is
 4. Quick stats widget displaying sync status and listing counts
 
 == Changelog ==
+
+= 1.7.3 =
+* **Re-listing Detection**: Address-based duplicate detection catches when agents delete and re-list with NEW MLS numbers
+* **Smart Duplicate Logic**: Matches by address + transaction type + agent, updates existing post instead of creating duplicates
+* **Dual Listing Support**: Correctly allows same address with different transaction types (For Sale vs For Lease) as separate posts
+* **Transaction Type Storage**: Now stores TransactionType in meta field for efficient querying and duplicate detection
+* **Legacy Fallback**: Parses title prefixes for legacy posts without transaction_type meta
+* **Verified Real-World Fix**: Tested with actual duplicate examples, confirmed 4x duplicate reduction
+* **Comprehensive Test Coverage**: Added 5 new duplicate detection tests, all 153 tests passing with 490 assertions
+* Prevents the common scenario of agents re-listing causing duplicate posts with different MLS numbers
 
 = 1.7.2 =
 * **TREB Display Format**: Bedroom count now matches TREB/realtor.ca official "X+Y" format (e.g., "1+1" instead of "2")

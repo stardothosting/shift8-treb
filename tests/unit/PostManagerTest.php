@@ -1711,6 +1711,192 @@ class PostManagerTest extends TestCase {
     }
 
     /**
+     * Test address-based duplicate detection for re-listing scenarios
+     * 
+     * This tests the case where an agent deletes a listing and re-lists with a NEW MLS number.
+     * The plugin should detect this by matching address + transaction type + agent.
+     * 
+     * @since 1.7.3
+     */
+    public function test_address_based_duplicate_detection() {
+        Functions\when('shift8_treb_log')->justReturn(true);
+        
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('get_existing_listing_by_address');
+        $method->setAccessible(true);
+
+        // Test Case 1: Match found - same address, same transaction type, same agent
+        Functions\when('get_posts')->alias(function($args) {
+            if (isset($args['meta_key']) && $args['meta_key'] === 'shift8_treb_unparsed_address') {
+                return array(12345); // Found by address
+            }
+            return array();
+        });
+        
+        Functions\when('get_post_meta')->alias(function($post_id, $key, $single) {
+            if ($key === 'shift8_treb_transaction_type') return 'For Sale';
+            if ($key === 'shift8_treb_list_agent_key') return '9559016';
+            if ($key === 'listing_mls_number') return 'X12651386';
+            return '';
+        });
+
+        $listing = array(
+            'ListingKey' => 'X12651390',
+            'UnparsedAddress' => '2320 Highway 117 N/A, Lake of Bays, ON P0B 1A0',
+            'TransactionType' => 'For Sale',
+            'ListAgentKey' => '9559016'
+        );
+
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals(12345, $result, 'Should detect duplicate by address, transaction type, and agent');
+    }
+
+    /**
+     * Test that different transaction types are NOT detected as duplicates
+     * 
+     * This is critical: same address For Sale and For Lease = TWO VALID POSTS, not duplicates
+     * 
+     * @since 1.7.3
+     */
+    public function test_different_transaction_types_not_duplicate() {
+        Functions\when('shift8_treb_log')->justReturn(true);
+        
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('get_existing_listing_by_address');
+        $method->setAccessible(true);
+
+        // Existing post is For Sale, new listing is For Lease
+        Functions\when('get_posts')->alias(function($args) {
+            if (isset($args['meta_key']) && $args['meta_key'] === 'shift8_treb_unparsed_address') {
+                return array(58083); // Found existing "For Sale" post
+            }
+            return array();
+        });
+        
+        Functions\when('get_post_meta')->alias(function($post_id, $key, $single) {
+            if ($key === 'shift8_treb_transaction_type') return 'For Sale'; // Existing is For Sale
+            if ($key === 'shift8_treb_list_agent_key') return '9585244';
+            if ($key === 'listing_mls_number') return 'W12652018';
+            return '';
+        });
+
+        $listing = array(
+            'ListingKey' => 'W12652020',
+            'UnparsedAddress' => '1928 Lakeshore Boulevard W 3210, Toronto W01, ON M6S 0B1',
+            'TransactionType' => 'For Lease', // New listing is For Lease
+            'ListAgentKey' => '9585244'
+        );
+
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertFalse($result, 'Different transaction types should NOT be detected as duplicates');
+    }
+
+    /**
+     * Test legacy posts without transaction_type meta (fallback to title parsing)
+     * 
+     * @since 1.7.3
+     */
+    public function test_address_duplicate_legacy_posts_fallback() {
+        Functions\when('shift8_treb_log')->justReturn(true);
+        
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('get_existing_listing_by_address');
+        $method->setAccessible(true);
+
+        // Legacy post without transaction_type meta, but with title prefix
+        Functions\when('get_posts')->alias(function($args) {
+            if (isset($args['meta_key']) && $args['meta_key'] === 'shift8_treb_unparsed_address') {
+                return array(54168);
+            }
+            return array();
+        });
+        
+        Functions\when('get_post_meta')->alias(function($post_id, $key, $single) {
+            if ($key === 'shift8_treb_transaction_type') return ''; // No meta stored (legacy)
+            if ($key === 'shift8_treb_list_agent_key') return '9541171';
+            if ($key === 'listing_mls_number') return 'C12612188';
+            return '';
+        });
+        
+        // Return a post object with title prefix for fallback
+        Functions\when('get_post')->alias(function($post_id) {
+            $post = new \stdClass();
+            $post->ID = $post_id;
+            $post->post_title = 'For Sale: 560 Atlas Avenue, Toronto C03, ON M6C 3R4';
+            return $post;
+        });
+
+        $listing = array(
+            'ListingKey' => 'C12612218',
+            'UnparsedAddress' => '560 Atlas Avenue, Toronto C03, ON M6C 3R4',
+            'TransactionType' => 'For Sale',
+            'ListAgentKey' => '9541171'
+        );
+
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertEquals(54168, $result, 'Should detect duplicate using title prefix fallback');
+    }
+
+    /**
+     * Test no duplicate when no address match exists
+     * 
+     * @since 1.7.3
+     */
+    public function test_no_address_match_no_duplicate() {
+        Functions\when('shift8_treb_log')->justReturn(true);
+        
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('get_existing_listing_by_address');
+        $method->setAccessible(true);
+
+        Functions\when('get_posts')->justReturn(array()); // No existing posts with this address
+
+        $listing = array(
+            'ListingKey' => 'W12345678',
+            'UnparsedAddress' => '123 New Street, Toronto, ON M5V 1A1',
+            'TransactionType' => 'For Sale',
+            'ListAgentKey' => '1234567'
+        );
+
+        $result = $method->invoke($this->post_manager, $listing);
+        $this->assertFalse($result, 'No match should return false');
+    }
+
+    /**
+     * Test that transaction_type is now stored in meta fields
+     * 
+     * @since 1.7.3
+     */
+    public function test_transaction_type_stored_in_meta() {
+        global $meta_calls;
+        $meta_calls = array();
+        
+        Functions\when('update_post_meta')->alias(function($post_id, $key, $value) {
+            global $meta_calls;
+            $meta_calls[$key] = $value;
+            return true;
+        });
+        
+        Functions\when('shift8_treb_log')->justReturn(true);
+        
+        $reflection = new \ReflectionClass($this->post_manager);
+        $method = $reflection->getMethod('store_listing_meta_fields');
+        $method->setAccessible(true);
+        
+        $listing = array(
+            'ListingKey' => 'W12345678',
+            'UnparsedAddress' => '123 Test Street, Toronto, ON M5V 1A1',
+            'TransactionType' => 'For Sale',
+            'ListAgentKey' => '1234567'
+        );
+        
+        $method->invoke($this->post_manager, 12345, $listing);
+        
+        $this->assertArrayHasKey('shift8_treb_transaction_type', $meta_calls, 'TransactionType should be stored in meta');
+        $this->assertEquals('For Sale', $meta_calls['shift8_treb_transaction_type'], 'TransactionType value should be stored correctly');
+    }
+
+    /**
      * Test address cleaning for specific problematic addresses that were failing geocoding
      * Addresses Issue: Unit numbers after street names, floor designations, duplicate cities
      */

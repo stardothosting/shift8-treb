@@ -56,3 +56,5 @@ debug.log
 
 # Plugin-specific temporary files
 wp-content/uploads/shift8-treb-logs/
+# Snyk Security Extension - AI Rules (auto-generated)
+.cursor/rules/snyk_rules.mdc

@@ -291,7 +291,32 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.7.2 (Current)
+### Version 1.7.3 (Current)
+- **🔄 Re-listing Detection**: Address-based duplicate detection for agent re-listings
+  - Problem: Agents delete and re-list properties with NEW MLS numbers, creating duplicates
+  - Solution: Secondary check by address + transaction type + agent after MLS lookup fails
+  - When detected: Updates existing post with new MLS number instead of creating duplicate
+  - Reduces database bloat from repeated re-listings (verified 4x duplicate reduction in testing)
+- **🏠 Smart Duplicate Logic**: Intelligent matching criteria
+  - Same address + same transaction type + same agent = **DUPLICATE** (update existing)
+  - Same address + **DIFFERENT** transaction type = **LEGITIMATE** (keep both - dual listing)
+  - Example: For Sale @ $735,000 AND For Lease @ $3,000 = TWO valid separate posts
+- **📊 Transaction Type Storage**: Added `shift8_treb_transaction_type` meta field
+  - Enables efficient duplicate queries
+  - Fallback to title prefix parsing for legacy posts
+  - Critical for distinguishing For Sale vs For Lease vs For Sale or Lease
+- **🧪 Enhanced Test Coverage**: 153 tests passing with 490 assertions (+5 new tests)
+  - Address-based duplicate detection scenarios
+  - Different transaction types NOT detected as duplicates
+  - Legacy posts fallback to title parsing
+  - No match returns false
+  - Transaction type stored in meta verification
+- **✅ Real-World Verified**: Tested with actual duplicate examples
+  - Cleaned up 4x duplicates for single property (same agent re-listed 4 times)
+  - Verified dual listings correctly preserved
+  - Confirmed future syncs update existing instead of creating new
+
+### Version 1.7.2
 - **🏠 TREB Display Format Enhancement**: Bedroom count now matches official TREB/realtor.ca "X+Y" format
   - Issue: Plugin displayed "2 bedrooms" while TREB/realtor.ca shows "1+1" for condos with dens
   - Solution: Implemented ITSO standard format using BedroomsAboveGrade + BedroomsBelowGrade breakdown

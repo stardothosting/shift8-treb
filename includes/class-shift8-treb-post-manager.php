@@ -135,6 +135,55 @@ class Shift8_TREB_Post_Manager {
                 }
             }
 
+            // SECONDARY CHECK: Address-based duplicate detection for re-listings
+            // This catches cases where an agent deleted and re-listed with a NEW MLS number
+            // Only check if we didn't find an MLS match and the listing isn't sold
+            if (!$is_sold) {
+                $existing_by_address = $this->get_existing_listing_by_address($listing);
+                if ($existing_by_address) {
+                    // Found a duplicate by address - update the existing post instead of creating new
+                    shift8_treb_log('Re-listing detected by address match', array(
+                        'existing_post_id' => $existing_by_address,
+                        'old_mls' => esc_html(get_post_meta($existing_by_address, 'listing_mls_number', true)),
+                        'new_mls' => esc_html($mls_number),
+                        'address' => esc_html($listing['UnparsedAddress'] ?? 'Unknown'),
+                        'action' => 'Updating existing post with new MLS number'
+                    ));
+                    
+                    $post_id = $this->update_listing_post($existing_by_address, $listing);
+                    if (!$post_id) {
+                        return false;
+                    }
+                    
+                    // Update MLS number to the new one (critical for re-listing scenarios)
+                    update_post_meta($post_id, 'listing_mls_number', sanitize_text_field($listing['ListingKey']));
+                    wp_set_post_tags($post_id, array(sanitize_text_field($listing['ListingKey'])), true);
+                    
+                    // Update comprehensive listing data as custom meta fields
+                    $this->store_listing_meta_fields($post_id, $listing);
+                    
+                    // Process listing images (may have new images)
+                    $image_stats = $this->process_listing_images($post_id, $listing);
+                    
+                    // Update post content with actual image HTML after processing
+                    $this->update_post_content_with_images($post_id);
+                    
+                    shift8_treb_log('Re-listed property updated successfully', array(
+                        'post_id' => $post_id,
+                        'new_mls_number' => esc_html($mls_number),
+                        'image_stats' => $image_stats
+                    ));
+                    
+                    return array(
+                        'success' => true,
+                        'action' => 'updated_relisting',
+                        'post_id' => $post_id,
+                        'title' => sanitize_text_field($listing['UnparsedAddress']),
+                        'mls_number' => $mls_number
+                    );
+                }
+            }
+
             // Skip importing new sold listings (we only update existing ones to sold status)
             if ($is_sold) {
                 shift8_treb_log('Skipping new sold listing', array(
@@ -341,6 +390,91 @@ class Shift8_TREB_Post_Manager {
             }
         }
 
+        return false;
+    }
+
+    /**
+     * Get existing listing by address and transaction type (for re-listing detection)
+     * 
+     * This handles the case where an agent deletes a listing and re-lists with a NEW MLS number.
+     * We detect duplicates by matching:
+     * - Same unparsed_address (exact match)
+     * - Same transaction_type (For Sale, For Lease, For Sale or Lease)
+     * - Same agent (ListAgentKey) - ensures we don't match different owners' listings
+     * 
+     * IMPORTANT: Different transaction types are LEGITIMATE dual listings (not duplicates)
+     * Example: Same property listed For Sale AND For Lease = TWO valid posts
+     * 
+     * @since 1.7.3
+     * @param array $listing The new listing data from API
+     * @return int|false Existing post ID if found, false otherwise
+     */
+    private function get_existing_listing_by_address($listing) {
+        // Required fields for address-based detection
+        $address = isset($listing['UnparsedAddress']) ? sanitize_text_field($listing['UnparsedAddress']) : '';
+        $transaction_type = isset($listing['TransactionType']) ? sanitize_text_field($listing['TransactionType']) : '';
+        $agent_key = isset($listing['ListAgentKey']) ? sanitize_text_field($listing['ListAgentKey']) : '';
+        
+        // Need at least address to proceed
+        if (empty($address)) {
+            return false;
+        }
+        
+        // Find posts with the same address
+        $address_posts = get_posts(array(
+            'post_type' => 'post',
+            'meta_key' => 'shift8_treb_unparsed_address',
+            'meta_value' => $address,
+            'numberposts' => -1,
+            'post_status' => array('publish', 'draft'),
+            'fields' => 'ids'
+        ));
+        
+        if (empty($address_posts)) {
+            return false;
+        }
+        
+        // Filter by transaction type and agent
+        foreach ($address_posts as $post_id) {
+            $post_transaction_type = get_post_meta($post_id, 'shift8_treb_transaction_type', true);
+            $post_agent_key = get_post_meta($post_id, 'shift8_treb_list_agent_key', true);
+            $post_mls = get_post_meta($post_id, 'listing_mls_number', true);
+            
+            // Skip if no transaction type stored (legacy posts) - fall back to title check
+            if (empty($post_transaction_type)) {
+                $post = get_post($post_id);
+                if ($post) {
+                    $title = $post->post_title;
+                    if (strpos($title, 'For Sale:') === 0) {
+                        $post_transaction_type = 'For Sale';
+                    } elseif (strpos($title, 'For Lease:') === 0) {
+                        $post_transaction_type = 'For Lease';
+                    } elseif (strpos($title, 'For Sale or Lease:') === 0) {
+                        $post_transaction_type = 'For Sale or Lease';
+                    }
+                }
+            }
+            
+            // Match criteria: same address + same transaction type + same agent
+            // This ensures we only match re-listings by the same agent, not different sellers
+            $type_matches = ($post_transaction_type === $transaction_type);
+            $agent_matches = empty($agent_key) || empty($post_agent_key) || ($post_agent_key === $agent_key);
+            
+            if ($type_matches && $agent_matches) {
+                shift8_treb_log('Address-based duplicate detected', array(
+                    'existing_post_id' => $post_id,
+                    'existing_mls' => esc_html($post_mls),
+                    'new_mls' => esc_html($listing['ListingKey'] ?? 'unknown'),
+                    'address' => esc_html($address),
+                    'transaction_type' => esc_html($transaction_type),
+                    'agent_key' => esc_html($agent_key),
+                    'reason' => 'Agent likely deleted and re-listed with new MLS number'
+                ));
+                
+                return $post_id;
+            }
+        }
+        
         return false;
     }
 
@@ -1015,6 +1149,9 @@ class Shift8_TREB_Post_Manager {
             'shift8_treb_lot_size_area' => array('field' => 'LotSizeArea', 'sanitize' => 'float'),
             'shift8_treb_lot_size_units' => array('field' => 'LotSizeUnits', 'sanitize' => 'text'),
             'shift8_treb_year_built' => array('field' => 'YearBuilt', 'sanitize' => 'int'),
+            
+            // Transaction type (critical for duplicate detection - For Sale vs For Lease)
+            'shift8_treb_transaction_type' => array('field' => 'TransactionType', 'sanitize' => 'text'),
             
             // Status and dates
             'shift8_treb_standard_status' => array('field' => 'StandardStatus', 'sanitize' => 'text'),
