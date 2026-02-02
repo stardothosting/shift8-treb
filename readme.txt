@@ -4,7 +4,7 @@ Tags: real estate, listings, proptx, trreb, mlstr
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.7.3
+Stable tag: 1.7.4
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -131,6 +131,10 @@ The plugin is designed for single-site installations. Multisite compatibility is
 4. Quick stats widget displaying sync status and listing counts
 
 == Changelog ==
+
+= 1.7.4 =
+* Fix: "Last sync" timestamp now updates even when API returns zero listings (manual/cron)
+* Tests: added coverage to ensure last sync updates on empty results and not on dry-run
 
 = 1.7.3 =
 * **Re-listing Detection**: Address-based duplicate detection catches when agents delete and re-list with NEW MLS numbers

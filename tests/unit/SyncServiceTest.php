@@ -351,6 +351,16 @@ class SyncServiceTest extends TestCase {
         Functions\when('get_option')->justReturn(array(
             'bearer_token' => 'test_token'
         ));
+        Functions\when('current_time')->alias(function($format) {
+            return '2025-01-01T00:00:00+00:00';
+        });
+        $last_sync_value = null;
+        Functions\when('update_option')->alias(function($key, $value) use (&$last_sync_value) {
+            if ($key === 'shift8_treb_last_sync') {
+                $last_sync_value = $value;
+            }
+            return true;
+        });
 
         require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-sync-service.php';
         
@@ -375,6 +385,46 @@ class SyncServiceTest extends TestCase {
         $this->assertEquals(0, $results['total_listings']);
         $this->assertEquals(0, $results['processed']);
         $this->assertStringContainsString('No listings returned', $results['message']);
+        $this->assertEquals('2025-01-01T00:00:00+00:00', $last_sync_value);
+    }
+
+    /**
+     * Test that dry run does not update last sync timestamp
+     */
+    public function test_sync_dry_run_does_not_update_last_sync() {
+        Functions\when('get_option')->justReturn(array(
+            'bearer_token' => 'test_token'
+        ));
+        Functions\when('current_time')->alias(function($format) {
+            return '2025-01-02T00:00:00+00:00';
+        });
+        $update_called = false;
+        Functions\when('update_option')->alias(function($key, $value) use (&$update_called) {
+            if ($key === 'shift8_treb_last_sync') {
+                $update_called = true;
+            }
+            return true;
+        });
+
+        require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-sync-service.php';
+        
+        $sync_service = new \Shift8_TREB_Sync_Service();
+        
+        $reflection = new \ReflectionClass($sync_service);
+        
+        $ampre_property = $reflection->getProperty('ampre_service');
+        $ampre_property->setAccessible(true);
+        
+        $mock_ampre = $this->createMock('Shift8_TREB_AMPRE_Service');
+        $mock_ampre->method('test_connection')->willReturn(array('success' => true));
+        $mock_ampre->method('get_listings')->willReturn(array()); // Empty response
+        
+        $ampre_property->setValue($sync_service, $mock_ampre);
+
+        $results = $sync_service->execute_sync(array('dry_run' => true));
+
+        $this->assertFalse($results['success']); // Empty response returns early with success=false
+        $this->assertFalse($update_called);
     }
 
     /**

@@ -396,7 +396,7 @@ class Shift8_TREB_Admin {
             
             // Get the main plugin instance and trigger sync
             $plugin = Shift8_TREB::get_instance();
-            $plugin->sync_listings_cron();
+            $plugin->sync_listings_cron(true);
             
             shift8_treb_log('=== MANUAL SYNC COMPLETED ===', array(), 'info');
             

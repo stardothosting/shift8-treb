@@ -1134,6 +1134,13 @@
             "ageBasedSync": "Use listing_age_days for comprehensive coverage including re-imports",
             "userControl": "Provide CLI commands to check status and reset modes"
         },
+        "lastSyncTracking": {
+            "rule": "Always update last sync timestamp when a sync completes",
+            "appliesTo": "Manual sync, cron sync, and CLI syncs",
+            "emptyResults": "Update shift8_treb_last_sync even when API returns zero listings",
+            "dryRun": "Never update shift8_treb_last_sync during dry-run operations",
+            "testing": "Add regression tests for empty results and dry-run behavior"
+        },
         "syncStatusTransparency": {
             "rule": "Make sync mode visible and understandable to users",
             "statusCommand": "wp shift8-treb sync_status shows current mode and implications",
@@ -1263,7 +1270,7 @@
             "process": [
                 "Trace CLI sync: wp shift8-treb sync → Sync_Service::execute_sync()",
                 "Trace Cron sync: shift8_treb_sync_listings → sync_listings_cron() → Sync_Service::execute_sync()",
-                "Trace Web sync: ajax_manual_sync() → sync_listings_cron() → Sync_Service::execute_sync()"
+                "Trace Web sync: ajax_manual_sync() → sync_listings_cron(true) → Sync_Service::execute_sync()"
             ],
             "redFlag": "If any sync method bypasses the shared service, refactor immediately"
         }

@@ -108,6 +108,44 @@ class SyncLockingTest extends TestCase {
     }
 
     /**
+     * Test cron sync can skip lock when forced
+     */
+    public function test_cron_sync_can_skip_lock_when_forced() {
+        // Mock transient functions to simulate existing lock
+        $lock_checked = false;
+        $lock_set = false;
+        Functions\when('get_transient')->alias(function($key) use (&$lock_checked) {
+            if ($key === 'shift8_treb_sync_lock') {
+                $lock_checked = true;
+                return time();
+            }
+            return false;
+        });
+        Functions\when('set_transient')->alias(function($key) use (&$lock_set) {
+            if ($key === 'shift8_treb_sync_lock') {
+                $lock_set = true;
+            }
+            return true;
+        });
+        Functions\when('delete_transient')->justReturn(true);
+
+        // Mock other required functions
+        Functions\when('shift8_treb_log')->justReturn(true);
+        Functions\when('get_option')->justReturn(array('bearer_token' => 'test_token'));
+        Functions\when('shift8_treb_decrypt_data')->alias(function($data) { return $data; });
+        Functions\when('esc_html')->alias(function($text) { return htmlspecialchars($text); });
+
+        // Include main plugin class
+        require_once SHIFT8_TREB_PLUGIN_DIR . 'shift8-treb.php';
+        $plugin = \Shift8_TREB::get_instance();
+
+        $plugin->sync_listings_cron(true);
+
+        $this->assertFalse($lock_checked, 'Sync lock should be skipped when forced');
+        $this->assertTrue($lock_set, 'Sync lock should be set during forced sync');
+    }
+
+    /**
      * Test API response deduplication
      */
     public function test_api_response_deduplication() {

@@ -163,12 +163,19 @@ class Shift8_TREB_Sync_Service {
                 throw new Exception('API request failed: ' . esc_html($listings->get_error_message()));
             }
 
+            $current_timestamp = current_time('c'); // ISO 8601 format
+
             if (empty($listings)) {
+                if (!$dry_run) {
+                    update_option('shift8_treb_last_sync', $current_timestamp);
+                }
+
                 $results['message'] = 'No listings returned from API';
                 shift8_treb_log('No listings returned from AMPRE API', array(
                     'settings' => array(
                         'listing_age_days' => $this->settings['listing_age_days'] ?? 30,
-                        'last_sync_timestamp' => $this->settings['last_sync_timestamp'] ?? 'none'
+                        'last_sync_timestamp' => $this->settings['last_sync_timestamp'] ?? 'none',
+                        'last_sync_updated' => !$dry_run
                     )
                 ));
                 return $results;
@@ -281,7 +288,6 @@ class Shift8_TREB_Sync_Service {
 
             // Update last sync timestamp (only if not dry run)
             if (!$dry_run) {
-                $current_timestamp = current_time('c'); // ISO 8601 format
                 update_option('shift8_treb_last_sync', $current_timestamp);
             }
 

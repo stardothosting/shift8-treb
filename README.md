@@ -291,7 +291,13 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.7.3 (Current)
+### Version 1.7.4 (Current)
+- **🕒 Sync Status Fix**: "Last sync" now updates even when API returns zero listings
+  - Manual and scheduled syncs consistently record completion time
+  - Dry-run syncs continue to leave last sync unchanged
+- **🧪 Regression Tests**: Added coverage for empty results and dry-run behavior
+
+### Version 1.7.3
 - **🔄 Re-listing Detection**: Address-based duplicate detection for agent re-listings
   - Problem: Agents delete and re-list properties with NEW MLS numbers, creating duplicates
   - Solution: Secondary check by address + transaction type + agent after MLS lookup fails
