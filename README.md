@@ -435,7 +435,10 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.8.0 (Current)
+### Version 1.8.1 (Current)
+- Added full WP-CLI command reference documentation with all options, parameters, and examples
+
+### Version 1.8.0
 - **Geographic Region Filtering**: Restrict listings by postal code prefix (FSA) or city name
   - Postal Code Prefix: Uses OData `startswith(PostalCode, 'M5V')` with FSA format validation
   - City Name: Uses `City eq 'CityName'` with autocomplete from AMPRE Lookup API
