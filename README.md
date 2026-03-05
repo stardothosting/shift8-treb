@@ -6,7 +6,7 @@ A WordPress plugin that synchronizes real estate listings from the Toronto Regio
 
 This plugin replaces manual listing management by automatically fetching property data from the PropTx RESO Web API and creating properly formatted WordPress posts. It integrates seamlessly with the existing Shift8 plugin ecosystem and provides comprehensive administrative controls for managing real estate listing synchronization.
 
-**📖 [Read our detailed blog post about this plugin](https://shift8web.ca/how-to-import-trreb-proptx-real-estate-listings-into-your-wordpress-site/)** for technical insights, implementation details, and the story behind migrating from RETS to RESO Web API.
+**[Read our detailed blog post about this plugin](https://shift8web.ca/how-to-import-trreb-proptx-real-estate-listings-into-your-wordpress-site/)** for technical insights, implementation details, and the story behind migrating from RETS to RESO Web API.
 
 ## Features
 
@@ -21,6 +21,7 @@ This plugin replaces manual listing management by automatically fetching propert
 - Comprehensive API connection testing
 - Incremental synchronization using ModificationTimestamp for efficiency
 - Configurable listing age filters (days) for targeted data retrieval
+- **Geographic region filtering** by postal code prefix (FSA) or city name
 - Member-based categorization supporting multiple agent IDs
 - Exclusion filters for unwanted agent listings
 - Rate limiting and comprehensive error handling
@@ -51,6 +52,8 @@ This plugin replaces manual listing management by automatically fetching propert
 - Batch processing with progress indicators
 - **Direct MLS import** for specific listings
 - **Raw API diagnostics** for troubleshooting
+- **Listing preview** -- query API and view summary without creating posts
+- **Geographic filter overrides** via `--postal-prefix` and `--city` flags
 - **Sync mode management** (incremental vs age-based)
 
 ## Installation
@@ -71,6 +74,11 @@ This plugin replaces manual listing management by automatically fetching propert
 - **Member ID**: Comma-separated list of agent IDs for "Listings" category
 - **Member IDs to Exclude**: Comma-separated list of agent IDs to skip entirely
 - **Listing Age (days)**: Maximum age of listings to sync (1-365 days)
+
+### Geographic Filtering
+- **Filter Type**: Select "By Postal Code Prefix" or "By City" (mutually exclusive)
+- **Postal Code Prefixes**: Comma-separated FSAs (e.g., `M5V,M6H,M8X`) -- validated as `[A-Z][0-9][A-Z]`
+- **City Filter**: Comma-separated city names with jQuery UI Autocomplete from AMPRE Lookup API
 
 ### Optional Integrations
 - **Google Maps API Key**: For displaying interactive maps (geocoding now uses free OpenStreetMap)
@@ -192,6 +200,36 @@ wp shift8-treb analyze --search=W12345678,C12345679
 wp shift8-treb analyze --days=30 --limit=200
 ```
 
+### Preview Listings
+```bash
+# Preview listings using saved settings (no posts created)
+wp shift8-treb preview
+
+# Preview with postal code filter override
+wp shift8-treb preview --postal-prefix=M5V,M6H,M8X
+
+# Preview with city filter override
+wp shift8-treb preview --city="Toronto W08,Mississauga"
+
+# Preview with limit and members-only
+wp shift8-treb preview --limit=20 --members-only
+
+# Export preview as JSON
+wp shift8-treb preview --format=json
+```
+
+### Geographic Filter Overrides
+```bash
+# Sync with postal code prefix override
+wp shift8-treb sync --postal-prefix=M5V,M6H
+
+# Sync with city filter override
+wp shift8-treb sync --city="Toronto W08,Brampton"
+
+# Analyze with geographic filters
+wp shift8-treb analyze --city="Mississauga" --days=30
+```
+
 ### Sync Mode Management
 ```bash
 # Check current sync status
@@ -223,6 +261,7 @@ shift8-treb/
 │   └── js/
 ├── includes/
 │   ├── class-shift8-treb-ampre-service.php
+│   ├── class-shift8-treb-sync-service.php
 │   ├── class-shift8-treb-post-manager.php
 │   └── class-shift8-treb-cli.php
 ├── languages/
@@ -291,7 +330,28 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.7.4 (Current)
+### Version 1.8.0 (Current)
+- **Geographic Region Filtering**: Restrict listings by postal code prefix (FSA) or city name
+  - Postal Code Prefix: Uses OData `startswith(PostalCode, 'M5V')` with FSA format validation
+  - City Name: Uses `City eq 'CityName'` with autocomplete from AMPRE Lookup API
+  - Mutually exclusive via admin dropdown (None / Postal Prefix / City)
+  - City autocomplete powered by jQuery UI with cached canonical city names (30-day cache)
+  - Server-side and client-side validation against canonical city list
+- **Listing Preview Command**: `wp shift8-treb preview` shows API results without creating posts
+  - Includes price range/median, city breakdown, property type breakdown, and agent summary
+  - Supports all CLI filter overrides (`--postal-prefix`, `--city`, `--members-only`, `--limit`)
+- **CLI Code Consolidation**: Eliminated code duplication across WP-CLI commands
+  - Extracted shared `build_settings_overrides()` helper for consistent CLI flag parsing
+  - Added `Sync_Service::fetch_listings()` for read-only API access using the same query path as sync
+  - `analyze` command now routes through Sync_Service (supports geographic filters)
+- **AMPRE API Compatibility**: Removed `tolower()` from city queries (AMPRE returns 501 for OData string functions)
+- **Test Coverage**: 182 tests passing with 557 assertions
+  - 4 new `fetch_listings()` tests (success, missing token, API error, empty response)
+  - 8 new settings sanitization tests for geographic filters
+  - All city filter tests updated for direct `City eq` syntax
+- **Settings Consolidation**: Eliminated duplicate settings registration; single authoritative sanitize callback
+
+### Version 1.7.4
 - **🕒 Sync Status Fix**: "Last sync" now updates even when API returns zero listings
   - Manual and scheduled syncs consistently record completion time
   - Dry-run syncs continue to leave last sync unchanged

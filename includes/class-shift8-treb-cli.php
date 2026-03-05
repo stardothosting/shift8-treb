@@ -47,6 +47,12 @@ class Shift8_TREB_CLI {
      * [--skip-images]
      * : Skip image downloads for faster sync (stores external URLs only)
      *
+     * [--postal-prefix=<prefixes>]
+     * : Override geographic filter with postal code prefixes (e.g., M5V,M6H)
+     *
+     * [--city=<cities>]
+     * : Override geographic filter with city names (e.g., "Toronto W08,Mississauga")
+     *
      * [--sequential-images]
      * : Use sequential processing instead of default batch processing (slower but more compatible)
      *
@@ -91,9 +97,6 @@ class Shift8_TREB_CLI {
         }
 
         try {
-            // Prepare settings overrides for CLI
-            $settings_overrides = array();
-            
             // Check bearer token before proceeding
             $base_settings = get_option('shift8_treb_settings', array());
             if (empty($base_settings['bearer_token']) && !$force) {
@@ -109,32 +112,7 @@ class Shift8_TREB_CLI {
                 return $this->import_specific_mls($mls_list, $dry_run, $verbose, $base_settings);
             }
 
-            // Handle listing age override
-            if ($listing_age !== null) {
-                $settings_overrides['listing_age_days'] = $listing_age;
-                $settings_overrides['last_sync_timestamp'] = null; // Force age-based filtering
-                if ($verbose) {
-                    WP_CLI::line("Using listing age override: {$listing_age} days");
-                }
-            } else {
-                // For manual CLI sync, always use listing age instead of incremental sync
-                $settings_overrides['last_sync_timestamp'] = null;
-                if ($verbose) {
-                    $listing_age_days = $base_settings['listing_age_days'] ?? 30;
-                    WP_CLI::line("Using WordPress setting: {$listing_age_days} days (manual sync ignores incremental)");
-                }
-            }
-
-            // Enable members-only filtering if specified
-            if ($members_only) {
-                $settings_overrides['members_only'] = true;
-                WP_CLI::line("🎯 Members-only mode: Filtering at API level for configured member IDs");
-                
-                // Validate member IDs are configured
-                if (empty($base_settings['member_id'])) {
-                    WP_CLI::error('Member IDs not configured in settings. Cannot use --members-only flag.');
-                }
-            }
+            $settings_overrides = $this->build_settings_overrides($assoc_args, $base_settings, $verbose);
 
             // Handle image processing options
             if (isset($assoc_args['skip-images'])) {
@@ -429,6 +407,15 @@ class Shift8_TREB_CLI {
      * ---
      * default: 90
      * ---
+     *
+     * [--members-only]
+     * : Only show listings from configured member IDs (filters at API level)
+     *
+     * [--postal-prefix=<prefixes>]
+     * : Override geographic filter with postal code prefixes (e.g., M5V,M6H)
+     *
+     * [--city=<cities>]
+     * : Override geographic filter with city names (e.g., "Toronto W08,Mississauga")
      * 
      * ## EXAMPLES
      * 
@@ -452,46 +439,37 @@ class Shift8_TREB_CLI {
             WP_CLI::line("Searching for: {$search_mls}");
         }
         
-        // Get settings and initialize AMPRE service
-        $settings = get_option('shift8_treb_settings', array());
-        
-        if (empty($settings['bearer_token'])) {
-            WP_CLI::error('Bearer token not configured');
-        }
-        
-        // Decrypt token using the plugin's decryption function
-        $decrypted_token = shift8_treb_decrypt_data($settings['bearer_token']);
-        
-        if (empty($decrypted_token)) {
-            WP_CLI::error('Failed to decrypt bearer token');
-        }
-        
-        // Prepare settings for AMPRE service
-        $ampre_settings = array_merge($settings, array(
-            'bearer_token' => $decrypted_token,
-            'listing_age_days' => $days
-        ));
-        
-        // Initialize AMPRE service
-        require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-ampre-service.php';
-        $ampre_service = new Shift8_TREB_AMPRE_Service($ampre_settings);
-        
-        WP_CLI::line('Testing API connection...');
-        
         try {
-            $connection_result = $ampre_service->test_connection();
+            $base_settings = get_option('shift8_treb_settings', array());
+            
+            if (empty($base_settings['bearer_token'])) {
+                WP_CLI::error('Bearer token not configured');
+            }
+            
+            $overrides = $this->build_settings_overrides($assoc_args, $base_settings, false);
+            
+            if (!isset($overrides['listing_age_days'])) {
+                $overrides['listing_age_days'] = $days;
+                $overrides['last_sync_timestamp'] = null;
+            }
+            
+            if (isset($assoc_args['limit'])) {
+                $overrides['max_listings_per_query'] = $limit;
+            }
+            
+            require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-sync-service.php';
+            $sync_service = new Shift8_TREB_Sync_Service($overrides);
+            
+            WP_CLI::line('Testing API connection...');
+            $connection_result = $sync_service->test_connection();
             if (!$connection_result['success']) {
                 WP_CLI::error('API connection failed: ' . $connection_result['message']);
             }
             WP_CLI::success('API connection successful');
-        } catch (Exception $e) {
-            WP_CLI::error('API connection error: ' . esc_html($e->getMessage()));
-        }
-        
-        WP_CLI::line('Fetching listings data...');
-        
-        try {
-            $listings_result = $ampre_service->get_listings();
+            
+            WP_CLI::line('Fetching listings data...');
+            
+            $listings_result = $sync_service->fetch_listings();
             
             if (is_wp_error($listings_result)) {
                 WP_CLI::error('Failed to fetch listings: ' . $listings_result->get_error_message());
@@ -500,14 +478,13 @@ class Shift8_TREB_CLI {
             $listings = $listings_result;
             $total_found = count($listings);
             
-            // Limit the listings for analysis
             if ($limit > 0 && $total_found > $limit) {
                 $listings = array_slice($listings, 0, $limit);
             }
             
             WP_CLI::success("Found {$total_found} total listings, analyzing first " . count($listings));
             
-            // Analyze the data
+            $settings = get_option('shift8_treb_settings', array());
             $this->analyze_listings_data($listings, $search_mls, $show_agents, $settings);
             
         } catch (Exception $e) {
@@ -941,6 +918,166 @@ class Shift8_TREB_CLI {
     }
 
     /**
+     * Preview listings from API without creating posts
+     *
+     * Shows a summary of what the API would return with current settings,
+     * including price range, city breakdown, property types, and agent summary.
+     *
+     * ## OPTIONS
+     *
+     * [--limit=<number>]
+     * : Limit number of listings to fetch
+     *
+     * [--listing-age=<days>]
+     * : Override listing age in days
+     *
+     * [--members-only]
+     * : Only show listings from configured member IDs
+     *
+     * [--postal-prefix=<prefixes>]
+     * : Override geographic filter with postal code prefixes (e.g., M5V,M6H)
+     *
+     * [--city=<cities>]
+     * : Override geographic filter with city names (e.g., "Toronto W08,Mississauga")
+     *
+     * [--format=<format>]
+     * : Output format (table or json)
+     * ---
+     * default: table
+     * options:
+     *   - table
+     *   - json
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp shift8-treb preview
+     *     wp shift8-treb preview --postal-prefix=M5V,M6H,M8X
+     *     wp shift8-treb preview --city="Toronto W08,Mississauga"
+     *     wp shift8-treb preview --limit=20 --members-only
+     *     wp shift8-treb preview --format=json
+     *
+     * @when after_wp_load
+     */
+    public function preview($args, $assoc_args) {
+        $format = isset($assoc_args['format']) ? $assoc_args['format'] : 'table';
+
+        WP_CLI::line('=== Shift8 TREB Listing Preview ===');
+        WP_CLI::line('Querying API with current settings (no posts will be created)...');
+        WP_CLI::line('');
+
+        try {
+            $base_settings = get_option('shift8_treb_settings', array());
+
+            if (empty($base_settings['bearer_token'])) {
+                WP_CLI::error('Bearer token not configured.');
+            }
+
+            $overrides = $this->build_settings_overrides($assoc_args, $base_settings, true);
+
+            require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-sync-service.php';
+            $sync_service = new Shift8_TREB_Sync_Service($overrides);
+
+            WP_CLI::line('Testing API connection...');
+            $connection = $sync_service->test_connection();
+            if (!$connection['success']) {
+                WP_CLI::error('API connection failed: ' . $connection['message']);
+            }
+            WP_CLI::success('API connection successful');
+            WP_CLI::line('');
+
+            WP_CLI::line('Fetching listings...');
+            $listings = $sync_service->fetch_listings();
+
+            if (is_wp_error($listings)) {
+                WP_CLI::error('API error: ' . $listings->get_error_message());
+            }
+
+            $total = count($listings);
+            if ($total === 0) {
+                WP_CLI::warning('No listings returned from API with current filters.');
+                return;
+            }
+
+            WP_CLI::success("Retrieved {$total} listing(s)");
+            WP_CLI::line('');
+
+            $prices = array();
+            $cities = array();
+            $property_types = array();
+            $agents = array();
+            $member_ids = !empty($base_settings['member_id'])
+                ? array_map('trim', explode(',', $base_settings['member_id']))
+                : array();
+
+            foreach ($listings as $listing) {
+                if (isset($listing['ListPrice']) && $listing['ListPrice'] > 0) {
+                    $prices[] = $listing['ListPrice'];
+                }
+                $city = $listing['City'] ?? 'Unknown';
+                $cities[$city] = ($cities[$city] ?? 0) + 1;
+
+                $ptype = $listing['PropertyType'] ?? 'Unknown';
+                $property_types[$ptype] = ($property_types[$ptype] ?? 0) + 1;
+
+                $agent = $listing['ListAgentKey'] ?? 'Unknown';
+                $agents[$agent] = ($agents[$agent] ?? 0) + 1;
+            }
+
+            if ($format === 'json') {
+                $data = array(
+                    'total' => $total,
+                    'price_min' => !empty($prices) ? min($prices) : 0,
+                    'price_max' => !empty($prices) ? max($prices) : 0,
+                    'price_median' => !empty($prices) ? $prices[intval(count($prices) / 2)] : 0,
+                    'cities' => $cities,
+                    'property_types' => $property_types,
+                    'agents' => $agents,
+                );
+                WP_CLI::line(wp_json_encode($data, JSON_PRETTY_PRINT));
+                return;
+            }
+
+            if (!empty($prices)) {
+                sort($prices);
+                WP_CLI::line('--- Price Summary ---');
+                WP_CLI::line('  Min:    $' . number_format(min($prices)));
+                WP_CLI::line('  Max:    $' . number_format(max($prices)));
+                WP_CLI::line('  Median: $' . number_format($prices[intval(count($prices) / 2)]));
+                WP_CLI::line('');
+            }
+
+            arsort($cities);
+            WP_CLI::line('--- City Breakdown ---');
+            foreach ($cities as $city => $count) {
+                WP_CLI::line("  {$city}: {$count}");
+            }
+            WP_CLI::line('');
+
+            arsort($property_types);
+            WP_CLI::line('--- Property Types ---');
+            foreach ($property_types as $ptype => $count) {
+                WP_CLI::line("  {$ptype}: {$count}");
+            }
+            WP_CLI::line('');
+
+            arsort($agents);
+            $top_agents = array_slice($agents, 0, 10, true);
+            WP_CLI::line('--- Top Agents (max 10) ---');
+            foreach ($top_agents as $agent => $count) {
+                $tag = in_array($agent, $member_ids, true) ? ' [MEMBER]' : '';
+                WP_CLI::line("  {$agent}: {$count}{$tag}");
+            }
+
+            WP_CLI::line('');
+            WP_CLI::success("Preview complete: {$total} listings matched.");
+
+        } catch (Exception $e) {
+            WP_CLI::error('Preview failed: ' . esc_html($e->getMessage()));
+        }
+    }
+
+    /**
      * Clear all TREB sync logs
      *
      * ## OPTIONS
@@ -1132,6 +1269,68 @@ class Shift8_TREB_CLI {
         } else {
             WP_CLI::warning('No images were successfully downloaded.');
         }
+    }
+
+    /**
+     * Build settings overrides from CLI arguments
+     *
+     * @since 1.8.0
+     * @param array $assoc_args CLI associative arguments
+     * @param array $base_settings Current plugin settings
+     * @param bool $verbose Whether to show verbose output
+     * @return array Settings overrides
+     */
+    private function build_settings_overrides($assoc_args, $base_settings, $verbose = false) {
+        $overrides = array();
+
+        if (isset($assoc_args['listing-age'])) {
+            $overrides['listing_age_days'] = intval($assoc_args['listing-age']);
+            $overrides['last_sync_timestamp'] = null;
+            if ($verbose) {
+                WP_CLI::line("Using listing age override: " . $overrides['listing_age_days'] . " days");
+            }
+        } else {
+            $overrides['last_sync_timestamp'] = null;
+        }
+
+        if (isset($assoc_args['members-only'])) {
+            if (empty($base_settings['member_id'])) {
+                WP_CLI::error('Member IDs not configured in settings. Cannot use --members-only.');
+            }
+            $overrides['members_only'] = true;
+            WP_CLI::line("Members-only mode: Filtering at API level for configured member IDs");
+        }
+
+        if (isset($assoc_args['postal-prefix']) && isset($assoc_args['city'])) {
+            WP_CLI::error('--postal-prefix and --city are mutually exclusive. Use one or the other.');
+        }
+
+        if (isset($assoc_args['postal-prefix'])) {
+            $raw = strtoupper(trim($assoc_args['postal-prefix']));
+            $valid = array();
+            foreach (array_map('trim', explode(',', $raw)) as $p) {
+                if (preg_match('/^[A-Z][0-9][A-Z]$/', $p)) {
+                    $valid[] = $p;
+                }
+            }
+            if (!empty($valid)) {
+                $overrides['geographic_filter_type'] = 'postal_prefix';
+                $overrides['postal_code_prefixes'] = implode(',', $valid);
+                WP_CLI::line("Geographic filter: Postal prefix(es) " . implode(', ', $valid));
+            } else {
+                WP_CLI::warning('No valid postal code prefixes provided. Expected format: A1A (e.g., M5V)');
+            }
+        } elseif (isset($assoc_args['city'])) {
+            $overrides['geographic_filter_type'] = 'city';
+            $overrides['city_filter'] = sanitize_text_field(trim($assoc_args['city']));
+            WP_CLI::line("Geographic filter: City = " . esc_html($overrides['city_filter']));
+        }
+
+        if (isset($assoc_args['limit'])) {
+            $overrides['max_listings_per_query'] = intval($assoc_args['limit']);
+        }
+
+        return $overrides;
     }
 }
 

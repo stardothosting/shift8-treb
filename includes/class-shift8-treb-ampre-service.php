@@ -236,6 +236,36 @@ class Shift8_TREB_AMPRE_Service {
             // If 'all' or any other value, don't add filter
         }
 
+        // Add geographic filter based on filter type
+        $geo_type = $this->settings['geographic_filter_type'] ?? '';
+        if ($geo_type === 'postal_prefix' && !empty($this->settings['postal_code_prefixes'])) {
+            $prefixes = array_map('trim', explode(',', $this->settings['postal_code_prefixes']));
+            $prefix_filters = array();
+            foreach ($prefixes as $prefix) {
+                $prefix = strtoupper(sanitize_text_field($prefix));
+                if (preg_match('/^[A-Z][0-9][A-Z]$/', $prefix)) {
+                    $prefix_filters[] = "startswith(PostalCode, '" . $prefix . "')";
+                }
+            }
+            if (!empty($prefix_filters)) {
+                $filters[] = '(' . implode(' or ', $prefix_filters) . ')';
+            }
+        } elseif ($geo_type === 'city' && !empty($this->settings['city_filter'])) {
+            $cities = array_map('trim', explode(',', $this->settings['city_filter']));
+            $city_filters = array();
+            foreach ($cities as $city) {
+                $city = sanitize_text_field($city);
+                if (!empty($city)) {
+                    $city_filters[] = "City eq '" . $city . "'";
+                }
+            }
+            if (count($city_filters) === 1) {
+                $filters[] = $city_filters[0];
+            } elseif (count($city_filters) > 1) {
+                $filters[] = '(' . implode(' or ', $city_filters) . ')';
+            }
+        }
+
         // Combine filters
         if (!empty($filters)) {
             $params[] = '$filter=' . implode(' and ', $filters);
@@ -393,6 +423,64 @@ class Shift8_TREB_AMPRE_Service {
                 'error' => esc_html($e->getMessage())
             ));
             return new WP_Error('ampre_media_error', $e->getMessage());
+        }
+    }
+
+    /**
+     * Get city lookup values from AMPRE Lookup resource
+     *
+     * Fetches the canonical list of city names available in PropTX.
+     *
+     * @since 1.7.0
+     * @return array|WP_Error Array of city name strings or WP_Error
+     */
+    public function get_city_lookups() {
+        try {
+            if (empty($this->bearer_token)) {
+                throw new Exception('Bearer token is required');
+            }
+
+            $endpoint = "Lookup?\$filter=LookupName eq 'City'&\$select=LookupValue&\$top=2000";
+
+            $response = $this->make_request($endpoint);
+
+            if (is_wp_error($response)) {
+                throw new Exception('Lookup API request failed: ' . esc_html($response->get_error_message()));
+            }
+
+            $response_code = wp_remote_retrieve_response_code($response);
+            $response_body = wp_remote_retrieve_body($response);
+
+            if ($response_code !== 200) {
+                throw new Exception('Lookup API returned status code: ' . esc_html($response_code));
+            }
+
+            $data = json_decode($response_body, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE || !isset($data['value']) || !is_array($data['value'])) {
+                throw new Exception('Invalid response from Lookup API');
+            }
+
+            $cities = array();
+            foreach ($data['value'] as $item) {
+                if (!empty($item['LookupValue'])) {
+                    $cities[] = $item['LookupValue'];
+                }
+            }
+
+            sort($cities, SORT_STRING | SORT_FLAG_CASE);
+
+            shift8_treb_log('City lookups fetched from AMPRE', array(
+                'count' => count($cities)
+            ));
+
+            return $cities;
+
+        } catch (Exception $e) {
+            shift8_treb_log('AMPRE city lookup error', array(
+                'error' => esc_html($e->getMessage())
+            ));
+            return new WP_Error('ampre_lookup_error', $e->getMessage());
         }
     }
 

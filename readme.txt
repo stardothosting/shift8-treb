@@ -4,7 +4,7 @@ Tags: real estate, listings, proptx, trreb, mlstr
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.7.4
+Stable tag: 1.8.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -25,6 +25,7 @@ Shift8 TREB Real Estate Listings is a comprehensive WordPress plugin that automa
 * **Google Maps Integration** - Interactive maps with free OpenStreetMap geocoding and conditional display
 * **WalkScore Integration** - Walkability scoring for properties
 * **Member-Based Categorization** - Automatic categorization based on agent membership
+* **Geographic Filtering** - Restrict listings by postal code prefix (FSA) or city name with autocomplete
 * **Sold Listing Management** - Automatically updates existing listings to sold status with title prefix and tags
 * **WP-CLI Support** - Full command-line interface for server management
 * **Comprehensive Logging** - Detailed logging system with admin interface
@@ -43,6 +44,8 @@ Shift8 TREB Real Estate Listings is a comprehensive WordPress plugin that automa
 * **Batch Image Processing** - Memory-aware processing with adaptive timeouts
 * **Direct MLS Import** - Import specific listings via WP-CLI
 * **API Diagnostics** - Raw API response analysis for troubleshooting
+* **Geographic Filtering** - Filter by postal code prefix (FSA) or city name, mutually exclusive via admin dropdown
+* **Listing Preview** - Preview API results via WP-CLI without creating posts
 * **Sync Mode Management** - Control over incremental vs age-based synchronization
 * **Security Focused** - All input sanitized, output escaped, encrypted credential storage
 
@@ -131,6 +134,23 @@ The plugin is designed for single-site installations. Multisite compatibility is
 4. Quick stats widget displaying sync status and listing counts
 
 == Changelog ==
+
+= 1.8.0 =
+* **Geographic Region Filtering**: Restrict listings by postal code prefix (FSA) or city name
+* **Postal Code Prefix Filter**: Uses OData `startswith(PostalCode, 'M5V')` for precise area targeting with FSA validation
+* **City Name Filter**: Uses `City eq 'CityName'` with autocomplete powered by AMPRE Lookup API
+* **Mutually Exclusive Filters**: Admin dropdown selects filter type (None, Postal Prefix, City) -- one at a time
+* **City Autocomplete**: jQuery UI Autocomplete with cached canonical city names from AMPRE Lookup API (30-day cache)
+* **Server-Side Validation**: Cities validated against canonical list on save; invalid entries stripped with admin warning
+* **Client-Side Validation**: Real-time form validation against loaded city list before submission
+* **Listing Preview Command**: New `wp shift8-treb preview` shows API results without creating posts -- includes price stats, city/agent breakdown
+* **CLI Geographic Overrides**: `--postal-prefix=M5V,M6H` and `--city="Toronto W08,Mississauga"` flags for sync, preview, and analyze commands
+* **CLI Code Consolidation**: Extracted shared `build_settings_overrides()` helper -- sync, preview, and analyze all parse CLI flags identically
+* **Shared Fetch Method**: Added `Sync_Service::fetch_listings()` so preview and analyze use identical query construction as real sync
+* **Analyze Command Upgrade**: Now uses Sync_Service instead of manual token handling -- supports all geographic filters
+* **AMPRE API Compatibility**: Removed `tolower()` from city queries (AMPRE returns HTTP 501 for OData string functions)
+* **Comprehensive Test Coverage**: 182 tests passing with 557 assertions, including 4 new fetch_listings tests
+* Settings sanitization consolidated into single authoritative location, eliminating duplicate registration
 
 = 1.7.4 =
 * Fix: "Last sync" timestamp now updates even when API returns zero listings (manual/cron)
@@ -298,6 +318,9 @@ The plugin is designed for single-site installations. Multisite compatibility is
 * Automated synchronization
 
 == Upgrade Notice ==
+
+= 1.8.0 =
+New feature: Geographic region filtering allows restricting listings by postal code prefix or city name. New WP-CLI preview command for API query analysis. CLI commands consolidated to eliminate code duplication.
 
 = 1.6.2 =
 Critical update: Resolves three major production issues - duplicate images, geocoding failures, and duplicate posts. Enhanced reliability with comprehensive test coverage and zero-tolerance testing approach. Includes intelligent address cleaning and multi-layered duplicate detection.

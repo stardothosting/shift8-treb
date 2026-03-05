@@ -745,4 +745,345 @@ class AMPREServiceTest extends TestCase {
         $this->assertStringContainsString(' or ', $query_params, 'Should use OR logic for status values');
     }
 
+    /**
+     * Test geographic filter with single postal code prefix
+     */
+    public function test_geographic_filter_single_postal_prefix() {
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30,
+            'geographic_filter_type' => 'postal_prefix',
+            'postal_code_prefixes' => 'M5V'
+        );
+
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+
+        $query_params = $method->invoke($service);
+
+        $this->assertStringContainsString("startswith(PostalCode, 'M5V')", $query_params, 'Should include postal code prefix filter');
+        $this->assertStringContainsString("StandardStatus eq 'Active'", $query_params, 'Should still include status filters');
+    }
+
+    /**
+     * Test geographic filter with multiple postal code prefixes
+     */
+    public function test_geographic_filter_multiple_postal_prefixes() {
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30,
+            'geographic_filter_type' => 'postal_prefix',
+            'postal_code_prefixes' => 'M5V,M5S,M4W'
+        );
+
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+
+        $query_params = $method->invoke($service);
+
+        $this->assertStringContainsString("startswith(PostalCode, 'M5V')", $query_params, 'Should include first prefix');
+        $this->assertStringContainsString("startswith(PostalCode, 'M5S')", $query_params, 'Should include second prefix');
+        $this->assertStringContainsString("startswith(PostalCode, 'M4W')", $query_params, 'Should include third prefix');
+        $this->assertStringContainsString(' or ', $query_params, 'Should use OR logic between prefixes');
+    }
+
+    /**
+     * Test geographic filter with city only
+     */
+    public function test_geographic_filter_city_only() {
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30,
+            'geographic_filter_type' => 'city',
+            'city_filter' => 'Toronto'
+        );
+
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+
+        $query_params = $method->invoke($service);
+
+        $this->assertStringContainsString("City eq 'Toronto'", $query_params, 'Should include city filter');
+        $this->assertStringNotContainsString('startswith(PostalCode', $query_params, 'Should not include postal code filter when city mode');
+    }
+
+    /**
+     * Test geographic filter type "city" ignores postal prefixes even if set
+     */
+    public function test_geographic_filter_city_type_ignores_postal() {
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30,
+            'geographic_filter_type' => 'city',
+            'postal_code_prefixes' => 'M5V,M5S',
+            'city_filter' => 'Toronto'
+        );
+
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+
+        $query_params = $method->invoke($service);
+
+        $this->assertStringContainsString("City eq 'Toronto'", $query_params, 'Should include city filter');
+        $this->assertStringNotContainsString('startswith(PostalCode', $query_params, 'Should NOT include postal filter when type is city');
+    }
+
+    /**
+     * Test geographic filter type empty produces no geographic clauses
+     */
+    public function test_geographic_filter_type_empty() {
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30,
+            'geographic_filter_type' => '',
+            'postal_code_prefixes' => 'M5V',
+            'city_filter' => 'Toronto'
+        );
+
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+
+        $query_params = $method->invoke($service);
+
+        $this->assertStringNotContainsString('startswith(PostalCode', $query_params, 'Should NOT include postal code filter when type is empty');
+        $this->assertStringNotContainsString("City eq '", $query_params, 'Should NOT include city filter when type is empty');
+        $this->assertStringContainsString("StandardStatus eq 'Active'", $query_params, 'Should still include standard filters');
+    }
+
+    /**
+     * Test geographic filter not set at all produces no geographic clauses
+     */
+    public function test_geographic_filter_not_set() {
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30
+        );
+
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+
+        $query_params = $method->invoke($service);
+
+        $this->assertStringNotContainsString('startswith(PostalCode', $query_params);
+        $this->assertStringNotContainsString("City eq '", $query_params);
+    }
+
+    /**
+     * Test geographic filter rejects invalid postal code prefixes
+     */
+    public function test_geographic_filter_invalid_postal_prefix() {
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30,
+            'geographic_filter_type' => 'postal_prefix',
+            'postal_code_prefixes' => 'INVALID,12,M5V,XX'
+        );
+
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+
+        $query_params = $method->invoke($service);
+
+        $this->assertStringContainsString("startswith(PostalCode, 'M5V')", $query_params, 'Should include valid prefix');
+        $this->assertStringNotContainsString('INVALID', $query_params, 'Should reject invalid prefixes');
+        $this->assertStringNotContainsString("'12'", $query_params, 'Should reject numeric-only prefixes');
+    }
+
+    /**
+     * Test geographic filter with lowercase postal prefix (should uppercase)
+     */
+    public function test_geographic_filter_lowercase_postal_prefix() {
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30,
+            'geographic_filter_type' => 'postal_prefix',
+            'postal_code_prefixes' => 'm5v,l4k'
+        );
+
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+
+        $query_params = $method->invoke($service);
+
+        $this->assertStringContainsString("startswith(PostalCode, 'M5V')", $query_params, 'Should uppercase M5V');
+        $this->assertStringContainsString("startswith(PostalCode, 'L4K')", $query_params, 'Should uppercase L4K');
+    }
+
+    /**
+     * Test city filter with mixed case (should lowercase in query)
+     */
+    public function test_geographic_filter_city_preserves_case() {
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30,
+            'geographic_filter_type' => 'city',
+            'city_filter' => 'Richmond Hill'
+        );
+
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+
+        $query_params = $method->invoke($service);
+
+        $this->assertStringContainsString("City eq 'Richmond Hill'", $query_params, 'Should preserve city name as-is');
+        $this->assertStringNotContainsString('tolower', $query_params, 'Should NOT use tolower() - AMPRE returns 501');
+    }
+
+    /**
+     * Test city filter with punctuation (St. Catharines)
+     */
+    public function test_geographic_filter_city_with_punctuation() {
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30,
+            'geographic_filter_type' => 'city',
+            'city_filter' => 'St. Catharines'
+        );
+
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+
+        $query_params = $method->invoke($service);
+
+        $this->assertStringContainsString("City eq 'St. Catharines'", $query_params, 'Should preserve punctuation in city name');
+    }
+
+    /**
+     * Test postal prefix filter combined with members-only
+     */
+    public function test_geographic_filter_postal_with_members_only() {
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30,
+            'geographic_filter_type' => 'postal_prefix',
+            'postal_code_prefixes' => 'M5V',
+            'members_only' => true,
+            'member_id' => '2229166'
+        );
+
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+
+        $query_params = $method->invoke($service);
+
+        $this->assertStringContainsString("startswith(PostalCode, 'M5V')", $query_params, 'Should include postal prefix');
+        $this->assertStringContainsString("ListAgentKey eq '2229166'", $query_params, 'Should include member filter');
+        $this->assertStringContainsString("StandardStatus eq 'Active'", $query_params, 'Should include status filter');
+    }
+
+    /**
+     * Test multiple cities produces OR-combined clauses
+     */
+    public function test_geographic_filter_multiple_cities() {
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30,
+            'geographic_filter_type' => 'city',
+            'city_filter' => 'Toronto, Mississauga, Brampton'
+        );
+
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+
+        $query_params = $method->invoke($service);
+
+        $this->assertStringContainsString("City eq 'Toronto'", $query_params, 'Should include Toronto');
+        $this->assertStringContainsString("City eq 'Mississauga'", $query_params, 'Should include Mississauga');
+        $this->assertStringContainsString("City eq 'Brampton'", $query_params, 'Should include Brampton');
+        $this->assertStringContainsString(' or ', $query_params, 'Multiple cities should use OR logic');
+    }
+
+    /**
+     * Test single city does not wrap in extra parentheses
+     */
+    public function test_geographic_filter_single_city_no_parens() {
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30,
+            'geographic_filter_type' => 'city',
+            'city_filter' => 'Toronto'
+        );
+
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+
+        $query_params = $method->invoke($service);
+
+        $this->assertStringContainsString("City eq 'Toronto'", $query_params);
+        $this->assertStringNotContainsString("(City eq 'Toronto')", $query_params, 'Single city should not be wrapped in extra parens');
+    }
+
+    /**
+     * Test multiple cities with trailing comma and spaces
+     */
+    public function test_geographic_filter_cities_trailing_comma() {
+        $settings = array(
+            'bearer_token' => 'test_token',
+            'listing_age_days' => 30,
+            'geographic_filter_type' => 'city',
+            'city_filter' => 'Toronto, Vaughan, '
+        );
+
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('build_query_parameters');
+        $method->setAccessible(true);
+
+        $query_params = $method->invoke($service);
+
+        $this->assertStringContainsString("City eq 'Toronto'", $query_params);
+        $this->assertStringContainsString("City eq 'Vaughan'", $query_params);
+        $this->assertStringNotContainsString("eq ''", $query_params, 'Should skip empty segments from trailing comma');
+    }
+
+    /**
+     * Test city lookup returns WP_Error when no bearer token
+     */
+    public function test_get_city_lookups_requires_token() {
+        $settings = array('bearer_token' => '');
+        $service = new \Shift8_TREB_AMPRE_Service($settings);
+        $result = $service->get_city_lookups();
+        $this->assertInstanceOf(\WP_Error::class, $result, 'Should return WP_Error when no bearer token');
+    }
+
 }

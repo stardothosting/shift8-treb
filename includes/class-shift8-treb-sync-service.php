@@ -108,6 +108,23 @@ class Shift8_TREB_Sync_Service {
     }
 
     /**
+     * Fetch listings from API without processing them
+     *
+     * Uses the same settings, filters, and query construction as execute_sync()
+     * but returns raw listing data without creating or modifying any posts.
+     *
+     * @since 1.7.0
+     * @return array|WP_Error Array of listing data or WP_Error on failure
+     */
+    public function fetch_listings() {
+        if (empty($this->settings['bearer_token'])) {
+            return new WP_Error('missing_token', 'Bearer token not configured');
+        }
+
+        return $this->ampre_service->get_listings();
+    }
+
+    /**
      * Execute sync operation
      *
      * @since 1.1.0

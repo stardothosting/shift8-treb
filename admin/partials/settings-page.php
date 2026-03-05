@@ -180,6 +180,65 @@ $sync_status = array(
                     </table>
                 </div>
 
+                <!-- Geographic Filter Section -->
+                <div class="card">
+                    <h2 class="title"><?php esc_html_e('Geographic Filter', 'shift8-real-estate-listings-for-treb'); ?></h2>
+                    <?php
+                    $geo_type = isset($settings['geographic_filter_type']) ? $settings['geographic_filter_type'] : '';
+                    $postal_prefixes = isset($settings['postal_code_prefixes']) ? $settings['postal_code_prefixes'] : '';
+                    $city_filter_val = isset($settings['city_filter']) ? $settings['city_filter'] : '';
+                    ?>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row">
+                                <label for="geographic_filter_type"><?php esc_html_e('Filter Type', 'shift8-real-estate-listings-for-treb'); ?></label>
+                            </th>
+                            <td>
+                                <select id="geographic_filter_type" name="shift8_treb_settings[geographic_filter_type]">
+                                    <option value="" <?php selected($geo_type, ''); ?>><?php esc_html_e('None (no geographic filter)', 'shift8-real-estate-listings-for-treb'); ?></option>
+                                    <option value="postal_prefix" <?php selected($geo_type, 'postal_prefix'); ?>><?php esc_html_e('By Postal Code Prefix', 'shift8-real-estate-listings-for-treb'); ?></option>
+                                    <option value="city" <?php selected($geo_type, 'city'); ?>><?php esc_html_e('By City', 'shift8-real-estate-listings-for-treb'); ?></option>
+                                </select>
+                                <p class="description"><?php esc_html_e('Optionally restrict synced listings to a geographic area. Postal prefix and city filters are mutually exclusive.', 'shift8-real-estate-listings-for-treb'); ?></p>
+                            </td>
+                        </tr>
+                        <tr class="shift8-treb-postal-row" <?php echo ($geo_type !== 'postal_prefix') ? 'style="display:none;"' : ''; ?>>
+                            <th scope="row">
+                                <label for="postal_code_prefixes"><?php esc_html_e('Postal Code Prefixes', 'shift8-real-estate-listings-for-treb'); ?></label>
+                            </th>
+                            <td>
+                                <input type="text"
+                                       id="postal_code_prefixes"
+                                       name="shift8_treb_settings[postal_code_prefixes]"
+                                       value="<?php echo esc_attr($postal_prefixes); ?>"
+                                       class="regular-text"
+                                       placeholder="<?php esc_attr_e('e.g., M5V, M6H, M8X', 'shift8-real-estate-listings-for-treb'); ?>" />
+                                <p class="description"><?php esc_html_e('Comma-separated postal code prefixes (FSA format: Letter-Number-Letter).', 'shift8-real-estate-listings-for-treb'); ?></p>
+                            </td>
+                        </tr>
+                        <tr class="shift8-treb-city-row" <?php echo ($geo_type !== 'city') ? 'style="display:none;"' : ''; ?>>
+                            <th scope="row">
+                                <label for="shift8_treb_city_filter"><?php esc_html_e('City Filter', 'shift8-real-estate-listings-for-treb'); ?></label>
+                            </th>
+                            <td>
+                                <input type="text"
+                                       id="shift8_treb_city_filter"
+                                       name="shift8_treb_settings[city_filter]"
+                                       value="<?php echo esc_attr($city_filter_val); ?>"
+                                       class="regular-text"
+                                       placeholder="<?php esc_attr_e('e.g., Toronto, Mississauga, Brampton', 'shift8-real-estate-listings-for-treb'); ?>" />
+                                <p class="description"><?php esc_html_e('Comma-separated city names. Start typing to see suggestions.', 'shift8-real-estate-listings-for-treb'); ?></p>
+                                <p>
+                                    <button type="button" id="shift8-treb-refresh-cities" class="button button-secondary">
+                                        <?php esc_html_e('Refresh Cities', 'shift8-real-estate-listings-for-treb'); ?>
+                                    </button>
+                                    <span id="shift8-treb-city-cache-status" style="margin-left: 10px; color: #666;"></span>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
                 <!-- Additional Settings Section -->
                 <div class="card">
                     <h2 class="title"><?php esc_html_e('Additional Settings', 'shift8-real-estate-listings-for-treb'); ?></h2>
@@ -539,6 +598,106 @@ jQuery(document).ready(function($) {
             }
         });
     });
+
+    // Geographic filter type toggle
+    function toggleGeoFilterRows() {
+        var filterType = $('#geographic_filter_type').val();
+        if (filterType === 'postal_prefix') {
+            $('.shift8-treb-postal-row').show();
+            $('.shift8-treb-city-row').hide();
+        } else if (filterType === 'city') {
+            $('.shift8-treb-postal-row').hide();
+            $('.shift8-treb-city-row').show();
+        } else {
+            $('.shift8-treb-postal-row').hide();
+            $('.shift8-treb-city-row').hide();
+        }
+    }
+    $('#geographic_filter_type').on('change', toggleGeoFilterRows);
+    toggleGeoFilterRows();
+
+    // Refresh Cities
+    $('#shift8-treb-refresh-cities').on('click', function() {
+        var button = $(this);
+        var statusSpan = $('#shift8-treb-city-cache-status');
+        button.prop('disabled', true).text('<?php esc_html_e('Refreshing...', 'shift8-real-estate-listings-for-treb'); ?>');
+        statusSpan.text('');
+
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'shift8_treb_get_cities',
+                nonce: '<?php echo esc_js(wp_create_nonce('shift8_treb_nonce')); ?>',
+                refresh: 1
+            },
+            success: function(response) {
+                if (response.success) {
+                    statusSpan.text('<?php esc_html_e('City list refreshed.', 'shift8-real-estate-listings-for-treb'); ?>');
+                } else {
+                    statusSpan.css('color', '#dc3232').text('<?php esc_html_e('Failed to refresh city list.', 'shift8-real-estate-listings-for-treb'); ?>');
+                }
+            },
+            error: function() {
+                statusSpan.css('color', '#dc3232').text('<?php esc_html_e('Request failed.', 'shift8-real-estate-listings-for-treb'); ?>');
+            },
+            complete: function() {
+                button.prop('disabled', false).text('<?php esc_html_e('Refresh Cities', 'shift8-real-estate-listings-for-treb'); ?>');
+            }
+        });
+    });
+
+    // City autocomplete
+    if ($.ui && $.ui.autocomplete) {
+        function extractLast(term) {
+            return term.split(/,\s*/).pop();
+        }
+        $('#shift8_treb_city_filter').on('keydown', function(event) {
+            if (event.keyCode === $.ui.keyCode.TAB && $(this).autocomplete('instance').menu.active) {
+                event.preventDefault();
+            }
+        }).autocomplete({
+            source: function(request, response) {
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'shift8_treb_get_cities',
+                        nonce: '<?php echo esc_js(wp_create_nonce('shift8_treb_nonce')); ?>'
+                    },
+                    success: function(data) {
+                        if (data.success && data.data.cities) {
+                            var term = extractLast(request.term);
+                            var filtered = $.ui.autocomplete.filter(data.data.cities, term);
+                            response(filtered.slice(0, 20));
+                        } else {
+                            response([]);
+                        }
+                    },
+                    error: function() {
+                        response([]);
+                    }
+                });
+            },
+            search: function() {
+                var term = extractLast(this.value);
+                if (term.length < 2) {
+                    return false;
+                }
+            },
+            focus: function() {
+                return false;
+            },
+            select: function(event, ui) {
+                var terms = this.value.split(/,\s*/);
+                terms.pop();
+                terms.push(ui.item.value);
+                terms.push('');
+                this.value = terms.join(', ');
+                return false;
+            }
+        });
+    }
 
     // Manual Sync
     $('#manual-sync').on('click', function() {

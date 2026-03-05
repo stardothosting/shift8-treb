@@ -191,13 +191,8 @@ class MainPluginTest extends TestCase {
      * Test settings sanitization with valid data
      */
     public function test_sanitize_settings_valid_data() {
-        // Mock add_settings_error for success message
-        Functions\expect('add_settings_error')
-            ->once()
-            ->with('shift8_treb_settings', 'settings_updated', \Mockery::type('string'), 'updated')
-            ->andReturn(true);
-        
         // Mock sanitization functions
+        Functions\when('add_settings_error')->justReturn(true);
         Functions\when('sanitize_text_field')->alias(function($input) { return trim($input); });
         Functions\when('sanitize_email')->alias(function($input) { return filter_var($input, FILTER_SANITIZE_EMAIL); });
         Functions\when('esc_url_raw')->alias(function($input) { return filter_var($input, FILTER_SANITIZE_URL); });
@@ -208,6 +203,7 @@ class MainPluginTest extends TestCase {
         Functions\when('esc_html__')->alias(function($text, $domain) { return $text; });
         Functions\when('get_option')->justReturn(array('sync_frequency' => 'daily'));
         Functions\when('wp_clear_scheduled_hook')->justReturn(true);
+        Functions\when('get_transient')->justReturn(false);
         
         $input = array(
             'bearer_token' => 'test_token_123',
@@ -217,6 +213,8 @@ class MainPluginTest extends TestCase {
             'google_maps_api_key' => 'AIza_test_key',
             'listing_status_filter' => 'Active',
             'city_filter' => 'Toronto',
+            'geographic_filter_type' => 'city',
+            'postal_code_prefixes' => '',
             'property_type_filter' => 'Residential',
             'agent_filter' => '1525',
             'min_price' => '100000',
@@ -230,6 +228,8 @@ class MainPluginTest extends TestCase {
         $this->assertEquals('shift8_treb_8hours', $result['sync_frequency'], 'Should preserve valid sync frequency');
         $this->assertEquals('50', $result['max_listings_per_query'], 'Should preserve valid query limit');
         $this->assertEquals('1', $result['debug_enabled'], 'Should preserve debug setting');
+        $this->assertEquals('city', $result['geographic_filter_type'], 'Should preserve geographic filter type');
+        $this->assertEquals('Toronto', $result['city_filter'], 'Should preserve city filter');
     }
 
     /**
@@ -540,5 +540,164 @@ class MainPluginTest extends TestCase {
             $this->assertEquals($case['expected'], $result['listing_age_days'], 
                 "Failed for input: {$case['input']}");
         }
+    }
+
+    /**
+     * Helper to set up common mocks for sanitize_settings tests
+     */
+    private function setupSanitizeMocks() {
+        Functions\when('sanitize_text_field')->alias(function($input) { return trim($input); });
+        Functions\when('add_settings_error')->justReturn(true);
+        Functions\when('wp_salt')->justReturn('test_salt_auth_1234567890abcdef');
+        Functions\when('esc_html__')->alias(function($text, $domain) { return $text; });
+        Functions\when('wp_kses_post')->alias(function($content) { return strip_tags($content); });
+        Functions\when('get_option')->justReturn(array('sync_frequency' => 'daily'));
+        Functions\when('wp_clear_scheduled_hook')->justReturn(true);
+        Functions\when('get_transient')->justReturn(false);
+    }
+
+    /**
+     * Test geographic_filter_type postal_prefix saves through sanitize_settings
+     */
+    public function test_sanitize_saves_postal_prefix_type() {
+        $this->setupSanitizeMocks();
+
+        $input = array(
+            'geographic_filter_type' => 'postal_prefix',
+            'postal_code_prefixes' => 'M6P, M6H, M8X',
+            'city_filter' => '',
+        );
+
+        $result = $this->plugin->sanitize_settings($input);
+
+        $this->assertEquals('postal_prefix', $result['geographic_filter_type'], 'Type should be saved');
+        $this->assertEquals('M6P,M6H,M8X', $result['postal_code_prefixes'], 'Prefixes should be uppercased and cleaned');
+        $this->assertEquals('', $result['city_filter'], 'City should be empty');
+    }
+
+    /**
+     * Test geographic_filter_type city saves through sanitize_settings
+     */
+    public function test_sanitize_saves_city_type() {
+        $this->setupSanitizeMocks();
+
+        $input = array(
+            'geographic_filter_type' => 'city',
+            'postal_code_prefixes' => '',
+            'city_filter' => 'Toronto, Mississauga',
+        );
+
+        $result = $this->plugin->sanitize_settings($input);
+
+        $this->assertEquals('city', $result['geographic_filter_type'], 'Type should be saved');
+        $this->assertEquals('', $result['postal_code_prefixes'], 'Prefixes should be empty');
+        $this->assertEquals('Toronto, Mississauga', $result['city_filter'], 'Cities should be preserved');
+    }
+
+    /**
+     * Test geographic_filter_type none saves through sanitize_settings
+     */
+    public function test_sanitize_saves_no_filter_type() {
+        $this->setupSanitizeMocks();
+
+        $input = array(
+            'geographic_filter_type' => '',
+            'postal_code_prefixes' => 'M5V',
+            'city_filter' => 'Toronto',
+        );
+
+        $result = $this->plugin->sanitize_settings($input);
+
+        $this->assertEquals('', $result['geographic_filter_type'], 'Type should be empty');
+        $this->assertArrayHasKey('postal_code_prefixes', $result, 'Postal prefixes key should exist in result');
+        $this->assertArrayHasKey('city_filter', $result, 'City filter key should exist in result');
+    }
+
+    /**
+     * Test invalid geographic_filter_type falls back to empty
+     */
+    public function test_sanitize_rejects_invalid_filter_type() {
+        $this->setupSanitizeMocks();
+
+        $input = array(
+            'geographic_filter_type' => 'radius',
+        );
+
+        $result = $this->plugin->sanitize_settings($input);
+
+        $this->assertEquals('', $result['geographic_filter_type'], 'Invalid type should fallback to empty');
+    }
+
+    /**
+     * Test postal prefix validation strips invalid entries
+     */
+    public function test_sanitize_strips_invalid_postal_prefixes() {
+        $this->setupSanitizeMocks();
+
+        $input = array(
+            'geographic_filter_type' => 'postal_prefix',
+            'postal_code_prefixes' => 'M6P, INVALID, 123, M8X, ab',
+        );
+
+        $result = $this->plugin->sanitize_settings($input);
+
+        $this->assertEquals('M6P,M8X', $result['postal_code_prefixes'], 'Only valid FSAs should be kept');
+    }
+
+    /**
+     * Test lowercase postal prefixes are uppercased
+     */
+    public function test_sanitize_uppercases_postal_prefixes() {
+        $this->setupSanitizeMocks();
+
+        $input = array(
+            'geographic_filter_type' => 'postal_prefix',
+            'postal_code_prefixes' => 'm6p, m6h',
+        );
+
+        $result = $this->plugin->sanitize_settings($input);
+
+        $this->assertEquals('M6P,M6H', $result['postal_code_prefixes']);
+    }
+
+    /**
+     * Test single postal prefix saves correctly
+     */
+    public function test_sanitize_single_postal_prefix() {
+        $this->setupSanitizeMocks();
+
+        $input = array(
+            'geographic_filter_type' => 'postal_prefix',
+            'postal_code_prefixes' => 'M5V',
+        );
+
+        $result = $this->plugin->sanitize_settings($input);
+
+        $this->assertEquals('postal_prefix', $result['geographic_filter_type']);
+        $this->assertEquals('M5V', $result['postal_code_prefixes']);
+    }
+
+    /**
+     * Test city filter with cached list validates and normalises case
+     */
+    public function test_sanitize_city_validated_against_cache() {
+        Functions\when('sanitize_text_field')->alias(function($input) { return trim($input); });
+        Functions\when('add_settings_error')->justReturn(true);
+        Functions\when('wp_salt')->justReturn('test_salt_auth_1234567890abcdef');
+        Functions\when('esc_html__')->alias(function($text, $domain) { return $text; });
+        Functions\when('esc_html')->alias(function($text) { return $text; });
+        Functions\when('wp_kses_post')->alias(function($content) { return strip_tags($content); });
+        Functions\when('get_option')->justReturn(array('sync_frequency' => 'daily'));
+        Functions\when('wp_clear_scheduled_hook')->justReturn(true);
+        Functions\when('get_transient')->justReturn(array('Toronto', 'Mississauga', 'Brampton', 'Richmond Hill'));
+
+        $input = array(
+            'geographic_filter_type' => 'city',
+            'city_filter' => 'toronto, Mississauga, FakeCity',
+        );
+
+        $result = $this->plugin->sanitize_settings($input);
+
+        $this->assertEquals('Toronto, Mississauga', $result['city_filter'], 'Should normalise case from cache and strip invalid');
     }
 }

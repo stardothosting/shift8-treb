@@ -2076,5 +2076,108 @@
             "✓ Test with multiple actual MLS numbers to verify data appears correctly",
             "✓ Check meta field storage in addition to template output"
         ]
+    },
+    "geographicFilteringPatterns": {
+        "description": "Patterns for geographic region filtering via AMPRE OData API - Learned 2026-03-04/05",
+        "learnedDate": "2026-03-05",
+        "apiCapabilities": {
+            "confirmed": ["startswith(PostalCode, 'M5V') - FSA prefix filtering", "City eq 'Toronto W08' - direct city match (API is case-insensitive for eq)"],
+            "notSupported": ["tolower() - returns HTTP 501 Not Implemented", "geo.distance() / Edm.GeographyPoint - not available for radius filtering"],
+            "criticalLesson": "NEVER use OData string functions like tolower() with AMPRE - they return 501. The API handles City eq comparisons case-insensitively by default."
+        },
+        "settingModel": {
+            "geographic_filter_type": "'' (none), 'postal_prefix', or 'city' - mutually exclusive",
+            "postal_code_prefixes": "Comma-separated FSAs when type=postal_prefix",
+            "city_filter": "Comma-separated city names when type=city"
+        },
+        "postalCodePrefixFiltering": {
+            "rule": "Use OData startswith() on PostalCode field for geographic region filtering",
+            "implementation": "startswith(PostalCode, 'M5V') or startswith(PostalCode, 'M5S')",
+            "validation": "FSA format must be [A-Z][0-9][A-Z] (3 characters, e.g., M5V, L4K)",
+            "multipleValues": "Combine with OR logic within parentheses for broader coverage",
+            "cliFlag": "--postal-prefix=M5V,M5S,M5T",
+            "confirmedWorking": "Postal prefix filtering is confirmed working with live API data"
+        },
+        "cityFiltering": {
+            "rule": "Use direct City eq comparison WITHOUT tolower() - AMPRE handles case insensitivity natively",
+            "singleCity": "City eq 'Toronto W08'",
+            "multipleCities": "(City eq 'Toronto W08' or City eq 'Mississauga' or City eq 'Brampton')",
+            "resoDataType": "City is String List, Single with Open lookups - values vary by MLS",
+            "caseHandling": "AMPRE API is case-insensitive for City eq comparisons - do NOT use tolower() (causes 501)",
+            "multiWordSupport": "Multi-word cities (Richmond Hill) and punctuation (St. Catharines) work without special handling",
+            "cliFlag": "--city=\"Toronto W08,Mississauga\"",
+            "torontoQuirk": "Toronto listings use area codes (Toronto W08, Toronto C01, Toronto E03) NOT just 'Toronto' - the City Lookup API does not include these area-specific names",
+            "coverageQuirk": "Some cities in the Lookup API (e.g., Milton, Ottawa, Minden Hills) may have zero active listings in the Property data — this is a data availability issue, not a filter bug"
+        },
+        "cityAutocompleteLookup": {
+            "rule": "Use AMPRE Lookup API to fetch canonical city names for autocomplete validation",
+            "endpoint": "Lookup?$filter=LookupName eq 'City'&$select=LookupValue&$top=2000",
+            "caching": "WordPress transient 'shift8_treb_city_lookups' with 30-day expiry",
+            "ajaxEndpoint": "shift8_treb_get_cities with ?refresh=1 option to force cache refresh",
+            "uiComponent": "jQuery UI Autocomplete (ships with WordPress core) supporting multi-value comma-separated input",
+            "serverSideValidation": "On settings save, entered cities are validated against cached list; unrecognised values are stripped with a warning",
+            "clientSideValidation": "JavaScript checks entered cities against loaded list on form submit; prevents saving unrecognised values",
+            "limitation": "Lookup API city list does NOT include Toronto area codes (Toronto W08 etc.) that appear in Property data"
+        },
+        "designDecisions": {
+            "mutuallyExclusive": "Postal prefix and city are one-or-the-other via dropdown selector, not both simultaneously",
+            "rationale": "Agents typically filter by precise postal codes OR by broad city - combining them is confusing and rarely useful",
+            "orLogicWithinPrefixes": "Multiple FSAs use OR (listings can match ANY specified prefix)",
+            "orLogicWithinCities": "Multiple cities use OR (listings can match ANY specified city)",
+            "autocompleteCitySource": "AMPRE Lookup API provides exact city values PropTX uses - no external municipality API needed",
+            "cliMutuallyExclusive": "--postal-prefix and --city CLI flags are mutually exclusive, using both produces an error"
+        },
+        "debuggingApiFilters": {
+            "rule": "When debugging API filters, use the plugin's actual code path (Reflection + build_query_parameters) NOT manual wp eval API calls",
+            "reason": "wp eval with shell-escaped $filter params often breaks URL encoding, causing the API to silently ignore all filters and return unfiltered results",
+            "reliableMethod": "Use wp shift8-treb preview --city=X or Reflection-based wp eval that calls the plugin's build_query_parameters() method",
+            "redHerring": "If API returns results that don't match the filter (e.g., filtering for Milton but getting Toronto results), the filter param is likely broken in the URL — not silently ignored by the API"
+        }
+    },
+    "cliCodeDuplicationPrevention": {
+        "description": "Patterns for preventing code duplication across WP-CLI commands - Learned 2026-03-05",
+        "learnedDate": "2026-03-05",
+        "sharedSettingsOverrideHelper": {
+            "rule": "Extract shared CLI flag parsing into a private helper method to prevent duplication",
+            "implementation": "build_settings_overrides($assoc_args, $base_settings, $verbose) returns array of overrides",
+            "usedBy": ["sync command", "preview command", "analyze command"],
+            "handles": ["--listing-age", "--members-only", "--postal-prefix", "--city", "--limit", "mutual exclusivity validation"],
+            "benefit": "Adding a new CLI filter flag only requires changing one method, not three"
+        },
+        "sharedFetchListingsMethod": {
+            "rule": "Sync_Service::fetch_listings() provides read-only API access using the same query construction as execute_sync()",
+            "implementation": "Delegates to $this->ampre_service->get_listings() with bearer token validation",
+            "usedBy": ["preview command (read-only listing summary)", "analyze command (diagnostic analysis)"],
+            "benefit": "Preview and analyze use identical query construction as the real sync — no query divergence possible"
+        },
+        "entryPointArchitecture": {
+            "rule": "All sync entry points must converge on shared service classes",
+            "cron": "sync_listings_cron() → Sync_Service::execute_sync()",
+            "webAjax": "ajax_manual_sync() → sync_listings_cron(true) → Sync_Service::execute_sync()",
+            "cliSync": "sync() → build_settings_overrides() → Sync_Service::execute_sync()",
+            "cliPreview": "preview() → build_settings_overrides() → Sync_Service::fetch_listings()",
+            "cliAnalyze": "analyze() → build_settings_overrides() → Sync_Service::fetch_listings()",
+            "cliImportMls": "sync --mls → import_specific_mls() → AMPRE_Service::get_property() (intentionally different: single-MLS endpoint)"
+        }
+    },
+    "ampreOdataFunctionSupport": {
+        "description": "CRITICAL: AMPRE API OData function support matrix - Learned 2026-03-05",
+        "learnedDate": "2026-03-05",
+        "supported": {
+            "startswith": "startswith(PostalCode, 'M5V') — confirmed working for postal code prefix filtering",
+            "eq": "Field eq 'value' — works for City, ContractStatus, StandardStatus, ListAgentKey, TransactionType",
+            "ne": "Field ne 'value' — works for ContractStatus ne 'Unavailable'",
+            "ge": "ModificationTimestamp ge datetime — works for incremental sync",
+            "or": "filter1 or filter2 — works for combining multiple values",
+            "and": "filter1 and filter2 — works for combining different filter types"
+        },
+        "notSupported": {
+            "tolower": "tolower(Field) — returns HTTP 501 Not Implemented",
+            "toupper": "Likely unsupported (not tested, but same pattern as tolower)",
+            "contains": "Not tested — avoid unless verified",
+            "substringof": "Not tested — avoid unless verified",
+            "geoDistance": "geo.distance() — not supported, no spatial query capability"
+        },
+        "criticalRule": "NEVER use OData string transformation functions (tolower, toupper, trim, substring, concat) with AMPRE. Use direct comparisons only. The API handles case insensitivity internally for eq comparisons."
     }
 }

@@ -428,3 +428,27 @@
 .shift8-treb-button-group .button {
     flex: 1;
 }
+
+/* jQuery UI Autocomplete overrides for WP Admin */
+.ui-autocomplete {
+    max-height: 250px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 100100;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+}
+
+.ui-autocomplete .ui-menu-item-wrapper {
+    padding: 6px 12px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.ui-autocomplete .ui-state-active {
+    background: #0073aa;
+    color: #fff;
+    border: none;
+    margin: 0;
+}

@@ -3,7 +3,7 @@
  * Plugin Name: Shift8 Real Estate Listings for TREB
  * Plugin URI: https://github.com/stardothosting/shift8-treb
  * Description: Integrates Toronto Real Estate Board (TREB) listings via AMPRE API, automatically importing property listings into WordPress. Replaces the Python script with native WordPress functionality.
- * Version: 1.7.4
+ * Version: 1.8.0
  * Author: Shift8 Web
  * Author URI: https://shift8web.ca
  * Text Domain: shift8-real-estate-listings-for-treb
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('SHIFT8_TREB_VERSION', '1.7.4');
+define('SHIFT8_TREB_VERSION', '1.8.0');
 define('SHIFT8_TREB_PLUGIN_FILE', __FILE__);
 define('SHIFT8_TREB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('SHIFT8_TREB_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -261,7 +261,10 @@ class Shift8_TREB {
                     'excluded_member_ids' => '',
                     'listing_age_days' => '30',
                     'listing_template' => 'Property Details:\n\nAddress: %ADDRESS%\nPrice: %PRICE%\nMLS: %MLS%\nBedrooms: %BEDROOMS%\nBathrooms: %BATHROOMS%\nSquare Feet: %SQFT%\n\nDescription:\n%DESCRIPTION%',
-                    'post_excerpt_template' => '%ADDRESS%\n%LISTPRICE%\nMLS : %MLSNUMBER%'
+                    'post_excerpt_template' => '%ADDRESS%\n%LISTPRICE%\nMLS : %MLSNUMBER%',
+                    'geographic_filter_type' => '',
+                    'postal_code_prefixes' => '',
+                    'city_filter' => ''
                 )
             )
         );
@@ -354,7 +357,70 @@ class Shift8_TREB {
         if (isset($input['post_excerpt_template'])) {
             $sanitized['post_excerpt_template'] = wp_kses_post($input['post_excerpt_template']);
         }
-        
+
+        // Sanitize geographic filter settings
+        $allowed_geo_types = array('', 'postal_prefix', 'city');
+        if (isset($input['geographic_filter_type']) && in_array($input['geographic_filter_type'], $allowed_geo_types, true)) {
+            $sanitized['geographic_filter_type'] = $input['geographic_filter_type'];
+        } else {
+            $sanitized['geographic_filter_type'] = '';
+        }
+
+        if (isset($input['postal_code_prefixes'])) {
+            $raw_prefixes = sanitize_text_field(trim($input['postal_code_prefixes']));
+            if (!empty($raw_prefixes)) {
+                $prefixes = array_map('trim', explode(',', $raw_prefixes));
+                $valid_prefixes = array();
+                foreach ($prefixes as $prefix) {
+                    $prefix = strtoupper($prefix);
+                    if (preg_match('/^[A-Z][0-9][A-Z]$/', $prefix)) {
+                        $valid_prefixes[] = $prefix;
+                    }
+                }
+                $sanitized['postal_code_prefixes'] = implode(',', $valid_prefixes);
+            } else {
+                $sanitized['postal_code_prefixes'] = '';
+            }
+        }
+
+        if (isset($input['city_filter'])) {
+            $raw_cities = sanitize_text_field(trim($input['city_filter']));
+            if (!empty($raw_cities)) {
+                $cities = array_filter(array_map('trim', explode(',', $raw_cities)));
+                $cached_cities = get_transient('shift8_treb_city_lookups');
+
+                if (is_array($cached_cities) && !empty($cached_cities)) {
+                    $lowered_cache = array_map('strtolower', $cached_cities);
+                    $valid_cities = array();
+                    $invalid_cities = array();
+                    foreach ($cities as $city) {
+                        $idx = array_search(strtolower($city), $lowered_cache, true);
+                        if ($idx !== false) {
+                            $valid_cities[] = $cached_cities[$idx];
+                        } else {
+                            $invalid_cities[] = $city;
+                        }
+                    }
+                    if (!empty($invalid_cities)) {
+                        add_settings_error(
+                            'shift8_treb_settings',
+                            'invalid_cities',
+                            sprintf(
+                                esc_html__('Unrecognised city name(s) removed: %s. Use the autocomplete suggestions.', 'shift8-real-estate-listings-for-treb'),
+                                esc_html(implode(', ', $invalid_cities))
+                            ),
+                            'warning'
+                        );
+                    }
+                    $sanitized['city_filter'] = implode(', ', $valid_cities);
+                } else {
+                    $sanitized['city_filter'] = implode(', ', $cities);
+                }
+            } else {
+                $sanitized['city_filter'] = '';
+            }
+        }
+
         // Add success message
         add_settings_error(
             'shift8_treb_settings',
@@ -613,8 +679,10 @@ class Shift8_TREB {
                 'debug_enabled' => '0',
                 'google_maps_api_key' => '',
                 'listing_status_filter' => 'Active',
-                'city_filter' => 'Toronto',
-                'max_listings_per_sync' => 100
+                'city_filter' => '',
+                'max_listings_per_sync' => 100,
+                'geographic_filter_type' => '',
+                'postal_code_prefixes' => ''
             ));
         }
         

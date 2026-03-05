@@ -39,6 +39,7 @@ class Shift8_TREB_Admin {
         add_action('wp_ajax_shift8_treb_test_api_connection', array($this, 'ajax_test_api_connection'));
         add_action('wp_ajax_shift8_treb_manual_sync', array($this, 'ajax_manual_sync'));
         add_action('wp_ajax_shift8_treb_reset_sync', array($this, 'ajax_reset_sync'));
+        add_action('wp_ajax_shift8_treb_get_cities', array($this, 'ajax_get_cities'));
     }
 
     /**
@@ -130,138 +131,18 @@ class Shift8_TREB_Admin {
             'debug_enabled' => '0',
             'google_maps_api_key' => '',
             'listing_status_filter' => 'Active',
-            'city_filter' => 'Toronto',
+            'city_filter' => '',
             'property_type_filter' => '',
             'min_price' => '',
             'max_price' => '',
+            'geographic_filter_type' => '',
+            'postal_code_prefixes' => '',
             'listing_template' => ''
         ));
 
         // Include settings template
         include SHIFT8_TREB_PLUGIN_DIR . 'admin/partials/settings-page.php';
     }
-
-    /**
-     * Register settings
-     *
-     * Registers plugin settings with WordPress settings API for proper
-     * validation and sanitization.
-     *
-     * @since 1.0.0
-     */
-    public function register_settings() {
-        register_setting(
-            'shift8_treb_settings',
-            'shift8_treb_settings',
-            array(
-                'sanitize_callback' => array($this, 'sanitize_settings'),
-                'default' => array(
-                    'bearer_token' => '',
-                    'sync_frequency' => 'daily',
-                    'max_listings_per_query' => 100,
-                    'debug_enabled' => '0',
-                    'google_maps_api_key' => '',
-                    'listing_status_filter' => 'Active',
-                    'city_filter' => 'Toronto',
-                    'property_type_filter' => '',
-                    'min_price' => '',
-                    'max_price' => ''
-                )
-            )
-        );
-    }
-
-    /**
-     * Sanitize settings
-     *
-     * Validates and sanitizes all plugin settings before saving.
-     *
-     * @since 1.0.0
-     * @param array $input Raw input data
-     * @return array Sanitized settings
-     */
-    public function sanitize_settings($input) {
-        $sanitized = array();
-        
-        // Sanitize Bearer Token
-        if (isset($input['bearer_token'])) {
-            $token = trim($input['bearer_token']);
-            if (!empty($token)) {
-                $sanitized['bearer_token'] = shift8_treb_encrypt_data($token);
-            } else {
-                // Keep existing token if new one is empty
-                $existing_settings = get_option('shift8_treb_settings', array());
-                $sanitized['bearer_token'] = isset($existing_settings['bearer_token']) ? $existing_settings['bearer_token'] : '';
-            }
-        }
-        
-        // Sanitize sync frequency with extended options
-        $allowed_frequencies = array('hourly', 'every_8_hours', 'every_12_hours', 'daily', 'weekly', 'bi_weekly', 'monthly');
-        if (isset($input['sync_frequency']) && in_array($input['sync_frequency'], $allowed_frequencies, true)) {
-            $sanitized['sync_frequency'] = $input['sync_frequency'];
-        } else {
-            $sanitized['sync_frequency'] = 'daily';
-        }
-        
-        // Sanitize max listings per query
-        if (isset($input['max_listings_per_query'])) {
-            $max_listings = absint($input['max_listings_per_query']);
-            $sanitized['max_listings_per_query'] = max(1, min(1000, $max_listings)); // Between 1 and 1000
-        }
-        
-        // Sanitize debug setting
-        $sanitized['debug_enabled'] = isset($input['debug_enabled']) ? '1' : '0';
-        
-        // Sanitize Google Maps API key
-        if (isset($input['google_maps_api_key'])) {
-            $sanitized['google_maps_api_key'] = sanitize_text_field(trim($input['google_maps_api_key']));
-        }
-        
-        // Sanitize listing status filter (based on RESO StandardStatus)
-        $allowed_statuses = array('Active', 'Pending', 'ActiveUnderContract', 'Sold', 'Expired', 'Withdrawn', 'All');
-        if (isset($input['listing_status_filter']) && in_array($input['listing_status_filter'], $allowed_statuses, true)) {
-            $sanitized['listing_status_filter'] = $input['listing_status_filter'];
-        } else {
-            $sanitized['listing_status_filter'] = 'Active';
-        }
-        
-        // Sanitize city filter
-        if (isset($input['city_filter'])) {
-            $sanitized['city_filter'] = sanitize_text_field(trim($input['city_filter']));
-        }
-        
-        // Sanitize property type filter (based on RESO PropertyType)
-        if (isset($input['property_type_filter'])) {
-            $sanitized['property_type_filter'] = sanitize_text_field(trim($input['property_type_filter']));
-        }
-        
-        // Sanitize price filters
-        if (isset($input['min_price'])) {
-            $sanitized['min_price'] = $input['min_price'] !== '' ? absint($input['min_price']) : '';
-        }
-        
-        if (isset($input['max_price'])) {
-            $sanitized['max_price'] = $input['max_price'] !== '' ? absint($input['max_price']) : '';
-        }
-        
-        shift8_treb_log('Settings saved', array(
-            'bearer_token_set' => !empty($sanitized['bearer_token']),
-            'sync_frequency' => $sanitized['sync_frequency'],
-            'debug_enabled' => $sanitized['debug_enabled'],
-            'city_filter' => $sanitized['city_filter'],
-            'max_listings' => $sanitized['max_listings_per_query']
-        ));
-        
-        // Reschedule cron if frequency changed
-        $existing_settings = get_option('shift8_treb_settings', array());
-        if (isset($existing_settings['sync_frequency']) && $existing_settings['sync_frequency'] !== $sanitized['sync_frequency']) {
-            wp_clear_scheduled_hook('shift8_treb_sync_listings');
-            wp_schedule_event(time(), $sanitized['sync_frequency'], 'shift8_treb_sync_listings');
-        }
-        
-        return $sanitized;
-    }
-
 
     /**
      * Enqueue admin scripts and styles
@@ -285,11 +166,14 @@ class Shift8_TREB_Admin {
             SHIFT8_TREB_VERSION
         );
 
+        // jQuery UI Autocomplete ships with WordPress core
+        wp_enqueue_script('jquery-ui-autocomplete');
+
         // Add plugin-specific scripts
         wp_enqueue_script(
             'shift8-treb-admin',
             SHIFT8_TREB_PLUGIN_URL . 'admin/js/admin.js',
-            array('jquery'),
+            array('jquery', 'jquery-ui-autocomplete'),
             SHIFT8_TREB_VERSION,
             true
         );
@@ -433,6 +317,56 @@ class Shift8_TREB_Admin {
             'last_sync' => $last_sync ? gmdate('Y-m-d H:i:s', $last_sync) : esc_html__('Never', 'shift8-real-estate-listings-for-treb'),
             'is_scheduled' => (bool) $next_sync
         );
+    }
+
+    /**
+     * AJAX handler for fetching city lookup values
+     *
+     * Returns cached city list from AMPRE Lookup API, refreshing if stale.
+     * Accepts optional ?refresh=1 to force cache refresh.
+     *
+     * @since 1.7.0
+     */
+    public function ajax_get_cities() {
+        if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'shift8_treb_nonce') || !current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => esc_html__('Security check failed.', 'shift8-real-estate-listings-for-treb')));
+        }
+
+        $force_refresh = !empty($_POST['refresh']);
+        $transient_key = 'shift8_treb_city_lookups';
+
+        if (!$force_refresh) {
+            $cached = get_transient($transient_key);
+            if (false !== $cached && is_array($cached)) {
+                wp_send_json_success(array('cities' => $cached, 'source' => 'cache'));
+            }
+        }
+
+        try {
+            $settings = get_option('shift8_treb_settings', array());
+
+            if (empty($settings['bearer_token'])) {
+                wp_send_json_error(array('message' => esc_html__('Bearer token not configured. Save your API credentials first.', 'shift8-real-estate-listings-for-treb')));
+            }
+
+            $bearer_token = shift8_treb_decrypt_data($settings['bearer_token']);
+            $settings['bearer_token'] = $bearer_token;
+
+            require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-ampre-service.php';
+            $service = new Shift8_TREB_AMPRE_Service($settings);
+            $cities = $service->get_city_lookups();
+
+            if (is_wp_error($cities)) {
+                wp_send_json_error(array('message' => esc_html($cities->get_error_message())));
+            }
+
+            set_transient($transient_key, $cities, 30 * 86400);
+
+            wp_send_json_success(array('cities' => $cities, 'source' => 'api', 'count' => count($cities)));
+
+        } catch (Exception $e) {
+            wp_send_json_error(array('message' => esc_html($e->getMessage())));
+        }
     }
 
     /**

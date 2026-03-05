@@ -189,12 +189,193 @@
             isValid = false;
         }
 
+        // Validate geographic filter fields based on selected type
+        var geoType = $('#geographic_filter_type').val();
+        if (geoType === 'postal_prefix') {
+            var postalVal = $('#postal_code_prefixes').val().trim();
+            if (!postalVal) {
+                errors.push('Postal code prefix filter is selected but no prefixes specified.');
+                isValid = false;
+            } else {
+                var invalidPrefixes = validatePostalPrefixes(postalVal);
+                if (invalidPrefixes.length > 0) {
+                    errors.push('Invalid postal code prefix(es): ' + invalidPrefixes.join(', ') + '. Format must be letter-digit-letter (e.g., M5V).');
+                    isValid = false;
+                }
+            }
+        } else if (geoType === 'city') {
+            var cityVal = $('#city_filter').val().trim();
+            if (!cityVal) {
+                errors.push('City filter is selected but no city specified.');
+                isValid = false;
+            } else if (cityListCache && cityListCache.length > 0) {
+                var enteredCities = splitValues(cityVal).filter(function(c) { return c.trim(); });
+                var lowered = cityListCache.map(function(c) { return c.toLowerCase(); });
+                var unknown = [];
+                for (var i = 0; i < enteredCities.length; i++) {
+                    if (lowered.indexOf(enteredCities[i].trim().toLowerCase()) === -1) {
+                        unknown.push(enteredCities[i].trim());
+                    }
+                }
+                if (unknown.length > 0) {
+                    errors.push('Unrecognised city name(s): ' + unknown.join(', ') + '. Use the autocomplete suggestions or click the refresh button.');
+                    isValid = false;
+                }
+            }
+        }
+
         // Show errors if any
         if (!isValid) {
             showNotice('error', 'Please fix the following errors:<br>• ' + errors.join('<br>• '));
         }
 
         return isValid;
+    }
+
+    /**
+     * Validate postal code prefixes and return array of invalid ones
+     */
+    function validatePostalPrefixes(value) {
+        if (!value) return [];
+        var fsaPattern = /^[A-Za-z]\d[A-Za-z]$/;
+        var prefixes = value.split(',');
+        var invalid = [];
+        for (var i = 0; i < prefixes.length; i++) {
+            var p = prefixes[i].trim();
+            if (p && !fsaPattern.test(p)) {
+                invalid.push(p);
+            }
+        }
+        return invalid;
+    }
+
+    /**
+     * Toggle geographic filter fields based on selected type
+     */
+    function initGeographicFilterToggle() {
+        var $select = $('#geographic_filter_type');
+        if (!$select.length) return;
+
+        function toggleRows() {
+            var type = $select.val();
+            $('#postal_prefix_row').toggle(type === 'postal_prefix');
+            $('#city_filter_row').toggle(type === 'city');
+            if (type === 'city') {
+                loadCityAutocomplete(false);
+            }
+        }
+
+        $select.on('change', toggleRows);
+        toggleRows();
+    }
+
+    var cityListCache = null;
+
+    /**
+     * Load city list and initialise jQuery UI Autocomplete (multi-value)
+     */
+    function loadCityAutocomplete(forceRefresh) {
+        var $field = $('#city_filter');
+        var $status = $('#city-cache-status');
+        if (!$field.length) return;
+
+        var data = {
+            action: 'shift8_treb_get_cities',
+            nonce: shift8TREB.nonce
+        };
+        if (forceRefresh) {
+            data.refresh = 1;
+        }
+
+        $status.text('Loading cities...').css('color', '#0073aa').show();
+
+        $.post(shift8TREB.ajaxurl, data, function(response) {
+            if (response.success && response.data.cities) {
+                cityListCache = response.data.cities;
+                var src = response.data.source === 'cache' ? 'cached' : 'API';
+                $status.text(cityListCache.length + ' cities loaded (' + src + ')').css('color', '#00a32a');
+                initCityAutocomplete($field, cityListCache);
+            } else {
+                var msg = response.data && response.data.message ? response.data.message : 'Could not load cities';
+                $status.text(msg).css('color', '#d63638');
+            }
+        }).fail(function() {
+            $status.text('Network error loading cities').css('color', '#d63638');
+        });
+    }
+
+    function splitValues(val) {
+        return val.split(/,\s*/);
+    }
+
+    function extractLast(term) {
+        return splitValues(term).pop();
+    }
+
+    function initCityAutocomplete($field, cities) {
+        if ($field.data('ui-autocomplete')) {
+            $field.autocomplete('destroy');
+        }
+
+        $field.on('keydown.shift8autocomplete', function(event) {
+            if (event.keyCode === $.ui.keyCode.TAB && $(this).autocomplete('instance').menu.active) {
+                event.preventDefault();
+            }
+        });
+
+        $field.autocomplete({
+            minLength: 1,
+            source: function(request, response) {
+                var term = extractLast(request.term).toLowerCase();
+                var matches = $.grep(cities, function(city) {
+                    return city.toLowerCase().indexOf(term) === 0;
+                });
+                response(matches.slice(0, 15));
+            },
+            focus: function() {
+                return false;
+            },
+            select: function(event, ui) {
+                var terms = splitValues(this.value);
+                terms.pop();
+                terms.push(ui.item.value);
+                terms.push('');
+                this.value = terms.join(', ');
+                return false;
+            }
+        });
+    }
+
+    /**
+     * Real-time validation for postal code prefix field
+     */
+    function initPostalPrefixValidation() {
+        var $field = $('#postal_code_prefixes');
+        if (!$field.length) return;
+
+        $field.on('blur', function() {
+            var val = $(this).val().trim();
+            var $feedback = $(this).next('.shift8-treb-validation-msg');
+            if (!$feedback.length) {
+                $feedback = $('<span class="shift8-treb-validation-msg"></span>');
+                $(this).after($feedback);
+            }
+
+            if (!val) {
+                $feedback.text('').hide();
+                return;
+            }
+
+            var invalid = validatePostalPrefixes(val);
+            if (invalid.length > 0) {
+                $feedback.text('Invalid: ' + invalid.join(', ') + ' — expected format: A1A (e.g., M5V)')
+                         .css('color', '#d63638').show();
+            } else {
+                var count = val.split(',').filter(function(v) { return v.trim(); }).length;
+                $feedback.text(count + ' valid prefix' + (count !== 1 ? 'es' : ''))
+                         .css('color', '#00a32a').show();
+            }
+        });
     }
 
     /**
@@ -252,6 +433,12 @@
         initTooltips();
         handleFrequencyChange();
         initAutoSave();
+        initGeographicFilterToggle();
+        initPostalPrefixValidation();
+
+        $('#refresh-city-list').on('click', function() {
+            loadCityAutocomplete(true);
+        });
         
         // Form validation on submit
         $('form').on('submit', function(e) {

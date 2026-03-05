@@ -466,6 +466,122 @@ class SyncServiceTest extends TestCase {
     }
 
     /**
+     * Test fetch_listings returns listings on success
+     */
+    public function test_fetch_listings_success() {
+        Functions\when('get_option')->alias(function($key) {
+            if ($key === 'shift8_treb_settings') {
+                return array('bearer_token' => 'test_token', 'listing_age_days' => 30);
+            }
+            if ($key === 'shift8_treb_last_sync') {
+                return '';
+            }
+            return array();
+        });
+
+        require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-sync-service.php';
+        $sync_service = new \Shift8_TREB_Sync_Service();
+
+        $reflection = new \ReflectionClass($sync_service);
+        $ampre_property = $reflection->getProperty('ampre_service');
+        $ampre_property->setAccessible(true);
+
+        $sample_listings = array(
+            array('ListingKey' => 'A1', 'UnparsedAddress' => '123 Main St'),
+            array('ListingKey' => 'A2', 'UnparsedAddress' => '456 Oak Ave'),
+        );
+
+        $mock_ampre = $this->createMock('Shift8_TREB_AMPRE_Service');
+        $mock_ampre->method('get_listings')->willReturn($sample_listings);
+        $ampre_property->setValue($sync_service, $mock_ampre);
+
+        $result = $sync_service->fetch_listings();
+        $this->assertIsArray($result);
+        $this->assertCount(2, $result);
+        $this->assertEquals('A1', $result[0]['ListingKey']);
+    }
+
+    /**
+     * Test fetch_listings returns WP_Error when bearer token is missing
+     */
+    public function test_fetch_listings_missing_token() {
+        Functions\when('get_option')->alias(function($key) {
+            if ($key === 'shift8_treb_settings') {
+                return array('bearer_token' => '', 'listing_age_days' => 30);
+            }
+            return array();
+        });
+
+        require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-sync-service.php';
+        $sync_service = new \Shift8_TREB_Sync_Service();
+
+        $result = $sync_service->fetch_listings();
+        $this->assertInstanceOf(\WP_Error::class, $result);
+        $this->assertEquals('missing_token', $result->get_error_code());
+    }
+
+    /**
+     * Test fetch_listings passes through API errors
+     */
+    public function test_fetch_listings_api_error() {
+        Functions\when('get_option')->alias(function($key) {
+            if ($key === 'shift8_treb_settings') {
+                return array('bearer_token' => 'test_token', 'listing_age_days' => 30);
+            }
+            if ($key === 'shift8_treb_last_sync') {
+                return '';
+            }
+            return array();
+        });
+
+        require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-sync-service.php';
+        $sync_service = new \Shift8_TREB_Sync_Service();
+
+        $reflection = new \ReflectionClass($sync_service);
+        $ampre_property = $reflection->getProperty('ampre_service');
+        $ampre_property->setAccessible(true);
+
+        $api_error = new \WP_Error('api_fail', 'Connection timed out');
+        $mock_ampre = $this->createMock('Shift8_TREB_AMPRE_Service');
+        $mock_ampre->method('get_listings')->willReturn($api_error);
+        $ampre_property->setValue($sync_service, $mock_ampre);
+
+        $result = $sync_service->fetch_listings();
+        $this->assertInstanceOf(\WP_Error::class, $result);
+        $this->assertEquals('api_fail', $result->get_error_code());
+    }
+
+    /**
+     * Test fetch_listings returns empty array when API has no results
+     */
+    public function test_fetch_listings_empty_response() {
+        Functions\when('get_option')->alias(function($key) {
+            if ($key === 'shift8_treb_settings') {
+                return array('bearer_token' => 'test_token', 'listing_age_days' => 30);
+            }
+            if ($key === 'shift8_treb_last_sync') {
+                return '';
+            }
+            return array();
+        });
+
+        require_once SHIFT8_TREB_PLUGIN_DIR . 'includes/class-shift8-treb-sync-service.php';
+        $sync_service = new \Shift8_TREB_Sync_Service();
+
+        $reflection = new \ReflectionClass($sync_service);
+        $ampre_property = $reflection->getProperty('ampre_service');
+        $ampre_property->setAccessible(true);
+
+        $mock_ampre = $this->createMock('Shift8_TREB_AMPRE_Service');
+        $mock_ampre->method('get_listings')->willReturn(array());
+        $ampre_property->setValue($sync_service, $mock_ampre);
+
+        $result = $sync_service->fetch_listings();
+        $this->assertIsArray($result);
+        $this->assertEmpty($result);
+    }
+
+    /**
      * Test incremental sync timestamp handling
      */
     public function test_incremental_sync_timestamp() {
