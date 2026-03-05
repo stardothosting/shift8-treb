@@ -112,19 +112,24 @@ Yes! The plugin uses universal placeholders that work with Visual Composer, Elem
 
 = Can I import specific listings? =
 
-Yes, use the WP-CLI command: `wp shift8-treb import W12345678,C12345679` to import specific MLS numbers.
+Yes, use the WP-CLI command: `wp shift8-treb sync --mls=W12345678,C12345679` to import specific MLS numbers.
 
 = How do I troubleshoot sync issues? =
 
 1. Enable debug mode in plugin settings
 2. Run a manual sync to generate logs
 3. Check the log viewer for error messages
-4. Use the API connection tester
+4. Use the API connection tester: `wp shift8-treb test_api`
 5. Use `wp shift8-treb analyze` for raw API diagnostics
+6. Use `wp shift8-treb preview` to verify filters without creating posts
 
 = Does this work with multisite? =
 
 The plugin is designed for single-site installations. Multisite compatibility is not currently supported.
+
+= What WP-CLI commands are available? =
+
+The plugin provides a full suite of WP-CLI commands under the `wp shift8-treb` namespace. See the WP-CLI Reference section below for complete documentation of each command with all options and parameters.
 
 == Screenshots ==
 
@@ -132,6 +137,169 @@ The plugin is designed for single-site installations. Multisite compatibility is
 2. Template placeholder documentation and customization options
 3. Log viewer showing detailed sync progress and debugging information
 4. Quick stats widget displaying sync status and listing counts
+
+== WP-CLI Reference ==
+
+All commands are registered under `wp shift8-treb`. WP-CLI must be installed on the server.
+
+= wp shift8-treb sync =
+
+Run a manual sync of TREB listings from the PropTx RESO Web API.
+
+Options:
+
+* `--dry-run` - Run without creating or updating any posts.
+* `--verbose` - Show detailed output including settings, sample data, and progress.
+* `--limit=<number>` - Limit the number of listings to process. Overrides admin settings.
+* `--force` - Force sync even if the bearer token is not configured.
+* `--listing-age=<days>` - Override listing age in days. Ignores incremental sync and uses age-based filtering.
+* `--mls=<numbers>` - Import specific MLS number(s), comma-separated. Example: `W12436591,C12380184`
+* `--members-only` - Sync only listings from configured member IDs. Applies filter at API level.
+* `--postal-prefix=<prefixes>` - Override geographic filter with postal code prefixes (FSA). Comma-separated. Example: `M5V,M6H`. Mutually exclusive with `--city`.
+* `--city=<cities>` - Override geographic filter with city names. Comma-separated. Example: `"Toronto W08,Mississauga"`. Mutually exclusive with `--postal-prefix`.
+* `--skip-images` - Skip image downloads for faster sync. Stores external URLs only.
+* `--sequential-images` - Use sequential image processing instead of batch. Slower but more compatible.
+
+Examples:
+
+    wp shift8-treb sync
+    wp shift8-treb sync --dry-run --verbose
+    wp shift8-treb sync --listing-age=7 --limit=50
+    wp shift8-treb sync --mls=W12436591,C12380184
+    wp shift8-treb sync --members-only --skip-images
+    wp shift8-treb sync --postal-prefix=M5V,M6H
+    wp shift8-treb sync --city="Brampton,Oakville" --limit=20
+
+= wp shift8-treb preview =
+
+Query the API and display a summary of matching listings without creating any posts. Output includes price range and median, city breakdown, property type breakdown, and top agents.
+
+Options:
+
+* `--limit=<number>` - Limit number of listings to fetch.
+* `--listing-age=<days>` - Override listing age in days.
+* `--members-only` - Only show listings from configured member IDs.
+* `--postal-prefix=<prefixes>` - Override geographic filter with postal code prefixes. Mutually exclusive with `--city`.
+* `--city=<cities>` - Override geographic filter with city names. Mutually exclusive with `--postal-prefix`.
+* `--format=<format>` - Output format: `table` (default) or `json`.
+
+Examples:
+
+    wp shift8-treb preview
+    wp shift8-treb preview --postal-prefix=M5V,M6H,M8X
+    wp shift8-treb preview --city="Toronto W08,Mississauga"
+    wp shift8-treb preview --limit=20 --members-only
+    wp shift8-treb preview --format=json
+
+= wp shift8-treb analyze =
+
+Fetch raw API data for diagnostic analysis. Supports searching for specific MLS numbers and showing agent breakdowns. No posts are created.
+
+Options:
+
+* `--limit=<number>` - Maximum listings to analyze. Default: 50.
+* `--search=<mls>` - Search for specific MLS number(s). Comma-separated.
+* `--show-agents` - Show unique agent IDs and their listing counts.
+* `--days=<number>` - Number of days to look back. Default: 90.
+* `--members-only` - Only analyze listings from configured member IDs.
+* `--postal-prefix=<prefixes>` - Override geographic filter. Mutually exclusive with `--city`.
+* `--city=<cities>` - Override geographic filter. Mutually exclusive with `--postal-prefix`.
+
+Examples:
+
+    wp shift8-treb analyze --limit=100 --show-agents
+    wp shift8-treb analyze --search=W12436591,C12380184
+    wp shift8-treb analyze --days=30 --limit=200
+    wp shift8-treb analyze --city="Mississauga" --days=30
+
+= wp shift8-treb settings =
+
+Display current plugin configuration. Sensitive values such as the bearer token are masked.
+
+Options:
+
+* `--format=<format>` - Output format: `table` (default), `json`, or `yaml`.
+
+Examples:
+
+    wp shift8-treb settings
+    wp shift8-treb settings --format=json
+
+= wp shift8-treb test_api =
+
+Test the PropTx RESO Web API connection using the configured bearer token.
+
+No options. Example:
+
+    wp shift8-treb test_api
+
+= wp shift8-treb test_media <listing_key> =
+
+Test the Media API for a specific listing. Shows available photos with URLs, types, order, and preferred photo status.
+
+Arguments:
+
+* `<listing_key>` - The MLS listing key. Example: `W12438713`
+
+Options:
+
+* `--raw` - Show the full raw JSON API response.
+
+Examples:
+
+    wp shift8-treb test_media W12438713
+    wp shift8-treb test_media W12438713 --raw
+
+= wp shift8-treb sync_status =
+
+Show current sync mode (incremental or age-based), last sync timestamp, and relevant settings.
+
+No options. Example:
+
+    wp shift8-treb sync_status
+
+= wp shift8-treb reset_sync =
+
+Reset the incremental sync timestamp. Forces next sync to use age-based filtering, re-importing listings that may have been deleted locally.
+
+Options:
+
+* `--yes` - Skip the confirmation prompt.
+
+Examples:
+
+    wp shift8-treb reset_sync
+    wp shift8-treb reset_sync --yes
+
+= wp shift8-treb clear_logs =
+
+Clear all plugin sync logs.
+
+Options:
+
+* `--yes` - Skip the confirmation prompt.
+
+Examples:
+
+    wp shift8-treb clear_logs
+    wp shift8-treb clear_logs --yes
+
+= wp shift8-treb retry-images =
+
+Retry downloading failed images for posts that have stored external image references. Draft posts are auto-published if the retry succeeds.
+
+Options:
+
+* `--limit=<number>` - Limit number of posts to process. Default: unlimited.
+* `--dry-run` - Show what would be processed without downloading.
+* `--status=<status>` - Only process posts with a specific status: `draft`, `publish`, or `any` (default).
+
+Examples:
+
+    wp shift8-treb retry-images
+    wp shift8-treb retry-images --dry-run
+    wp shift8-treb retry-images --status=draft
+    wp shift8-treb retry-images --limit=10
 
 == Changelog ==
 
