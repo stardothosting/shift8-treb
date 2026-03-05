@@ -4,7 +4,7 @@ Tags: real estate, listings, proptx, trreb, mlstr
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.8.0
+Stable tag: 1.8.1
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -303,6 +303,9 @@ Examples:
 
 == Changelog ==
 
+= 1.8.1 =
+* Added full WP-CLI command reference documentation with all options, parameters, and examples
+
 = 1.8.0 =
 * **Geographic Region Filtering**: Restrict listings by postal code prefix (FSA) or city name
 * **Postal Code Prefix Filter**: Uses OData `startswith(PostalCode, 'M5V')` for precise area targeting with FSA validation
@@ -486,6 +489,9 @@ Examples:
 * Automated synchronization
 
 == Upgrade Notice ==
+
+= 1.8.1 =
+Documentation update: Added comprehensive WP-CLI command reference with all options, parameters, and usage examples.
 
 = 1.8.0 =
 New feature: Geographic region filtering allows restricting listings by postal code prefix or city name. New WP-CLI preview command for API query analysis. CLI commands consolidated to eliminate code duplication.
