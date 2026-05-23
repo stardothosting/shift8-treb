@@ -58,3 +58,7 @@ debug.log
 wp-content/uploads/shift8-treb-logs/
 # Snyk Security Extension - AI Rules (auto-generated)
 .cursor/rules/snyk_rules.mdc
+
+
+#Ignore vscode AI rules
+.github/instructions/codacy.instructions.md

@@ -351,6 +351,7 @@ wp shift8-treb retry-images --limit=10
 
 ### System Requirements
 - WordPress 5.0 or higher
+- Tested up to WordPress 7.0
 - PHP 7.4 or higher
 - cURL extension for API communication
 - Write permissions for wp-content/uploads directory
@@ -435,7 +436,10 @@ This plugin is built to meet WordPress.org plugin directory standards:
 
 ## Changelog
 
-### Version 1.8.1 (Current)
+### Version 1.8.2 (Current)
+- Compatibility update: Tested against WordPress 7.0 and updated plugin metadata
+
+### Version 1.8.1
 - Added full WP-CLI command reference documentation with all options, parameters, and examples
 
 ### Version 1.8.0

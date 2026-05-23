@@ -2,9 +2,9 @@
 Contributors: shift8
 Tags: real estate, listings, proptx, trreb, mlstr
 Requires at least: 5.0
-Tested up to: 6.8
+Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.8.1
+Stable tag: 1.8.2
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -303,6 +303,9 @@ Examples:
 
 == Changelog ==
 
+= 1.8.2 =
+* Compatibility update: Tested against WordPress 7.0 and updated plugin metadata.
+
 = 1.8.1 =
 * Added full WP-CLI command reference documentation with all options, parameters, and examples
 
@@ -489,6 +492,9 @@ Examples:
 * Automated synchronization
 
 == Upgrade Notice ==
+
+= 1.8.2 =
+Compatibility update: Tested against WordPress 7.0.
 
 = 1.8.1 =
 Documentation update: Added comprehensive WP-CLI command reference with all options, parameters, and usage examples.
